@@ -1,0 +1,43 @@
+# Fly.io deployment. From the repo root:
+#
+#   fly launch --no-deploy --copy-config --dockerfile backend/Dockerfile
+#   fly volumes create samvara_data --size 1
+#   fly secrets set API_TOKEN=... BEEMINDER_TOKEN=... BEEMINDER_USER=... \
+#                   ALLOWED_ORIGINS=https://samvara.app BEEMINDER_DRYRUN=true
+#   fly deploy
+#
+# Adjust `app` and `primary_region` before launching.
+
+app = "samvara-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  AUTH_MODE = "token"
+  ALLOWED_ORIGINS = "https://samvara.app"
+  BEEMINDER_DRYRUN = "true"
+  MIN_STAKE = "1.00"
+  MAX_CHARGE_USD = "50.00"
+  GRACE_HOURS = "24"
+  SAMVARA_DB = "/data/samvara.db"
+
+# Persistent SQLite volume. Keep a single machine (min/max 1) so the file store
+# is owned by one process; scaling out needs a shared DB instead.
+[[mounts]]
+  source = "samvara_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  method = "GET"
+  path = "/v1/health"
+  interval = "30s"
+  timeout = "5s"

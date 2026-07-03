@@ -1,0 +1,47 @@
+name: Ratchet tick (auto-miss sweep)
+
+# Calls POST /v1/tick on a schedule so a missed deadline is charged and parked
+# even when nobody has the app open. This is the headless equivalent of the
+# app's per-second checkAutoMiss. It is safe to run often: already-resolved
+# commitments are skipped server-side, so ticks never double-charge.
+#
+# Required repository secrets:
+#   SAMVARA_API_BASE_URL   same base the frontend uses
+#   SAMVARA_API_TOKEN      the server's API_TOKEN
+#
+# NOTE: GitHub cron is best-effort and can be delayed under load. Your grace
+# window is 24h by default, so a few minutes of jitter is irrelevant. If you
+# need tighter timing, run this from a real cron / systemd timer instead (see
+# deploy/README notes).
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /v1/tick
+        env:
+          BASE: ${{ secrets.SAMVARA_API_BASE_URL }}
+          TOKEN: ${{ secrets.SAMVARA_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Normalize: strip trailing slash and an optional trailing /v1.
+          BASE="${BASE%/}"; BASE="${BASE%/v1}"
+          code=$(curl -sS -o /tmp/tick.out -w "%{http_code}" \
+            -X POST "$BASE/v1/tick" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json")
+          echo "HTTP $code"
+          # Deliberately NOT printing the response body: on a public repo these
+          # logs are world-readable and the body carries commitment names and
+          # amounts. Counts are all the log needs.
+          jq -r '"charged=\(.charged_count // 0) errors=\((.errors // []) | length)"' \
+            /tmp/tick.out 2>/dev/null || true
+          case "$code" in
+            2*) echo "tick ok" ;;
+            *)  echo "tick failed (HTTP $code)"; exit 1 ;;
+          esac

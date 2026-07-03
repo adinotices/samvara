@@ -1,0 +1,67 @@
+name: Deploy frontend to GitHub Pages
+
+# Builds the static frontend and publishes it. config.js is generated here so
+# the API base URL never lives in the repo. NO token is baked into the page:
+# the browser signs in via the server-side email OTP flow (/v1/auth/*) and
+# keeps its session token in localStorage. Only tick.yml uses API_TOKEN.
+#
+# Required repository secret (Settings → Secrets and variables → Actions):
+#   SAMVARA_API_BASE_URL   e.g. https://api.samvara.example.com
+# Optional repository variable:
+#   SAMVARA_CNAME          custom domain (defaults to samvara.app)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "scripts/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; let an in-progress one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate config.js
+        run: |
+          cat > frontend/config.js <<EOF
+          window.SAMVARA_CONFIG = {
+            apiBaseUrl: "${{ secrets.SAMVARA_API_BASE_URL }}",
+          };
+          EOF
+
+      - name: Build dist/
+        env:
+          CNAME: ${{ vars.SAMVARA_CNAME || 'samvara.app' }}
+        run: bash scripts/build-frontend.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

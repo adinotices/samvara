@@ -1,0 +1,22 @@
+# Secrets / per-environment config — never commit these
+.env
+frontend/config.js
+
+# Build output
+dist/
+
+# Data
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+*.swp

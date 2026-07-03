@@ -1,0 +1,40 @@
+# Portable deployment for a DigitalOcean droplet (or any Docker host).
+#
+#   1. Copy the repo to the host.
+#   2. Create a .env next to this file (see .env.example at the repo root).
+#   3. docker compose -f deploy/digitalocean/docker-compose.yml up -d --build
+#
+# The API listens on :8000. Put a TLS-terminating reverse proxy (Caddy, nginx,
+# or the DO load balancer) in front so the browser talks HTTPS — a page served
+# from https://samvara.app cannot call a plain-http API (mixed content).
+
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ── auth ──
+      AUTH_MODE: "token"
+      API_TOKEN: "${API_TOKEN:?set API_TOKEN in .env}"
+      # ── CORS: the exact origin your frontend is served from ──
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://samvara.app}"
+      # ── Beeminder (this is what moves money) ──
+      BEEMINDER_USER: "${BEEMINDER_USER:-}"
+      BEEMINDER_TOKEN: "${BEEMINDER_TOKEN:-}"
+      # Leave true until you've verified the whole flow, then set false to arm.
+      BEEMINDER_DRYRUN: "${BEEMINDER_DRYRUN:-true}"
+      # ── money safety rails ──
+      MIN_STAKE: "${MIN_STAKE:-1.00}"
+      MAX_CHARGE_USD: "${MAX_CHARGE_USD:-50.00}"
+      GRACE_HOURS: "${GRACE_HOURS:-24}"
+      # ── persistence (matches the volume below) ──
+      SAMVARA_DB: "/data/samvara.db"
+    volumes:
+      - samvara-data:/data
+
+volumes:
+  samvara-data:

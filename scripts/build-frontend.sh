@@ -25,8 +25,9 @@ mkdir -p "$OUT"
 # 1. Transform the bundle → dist/index.html
 python3 "$ROOT/scripts/transform_bundle.py" "$SRC/index.html" "$OUT/index.html"
 
-# 2. Real API client
+# 2. Real API client + favicon
 cp "$SRC/api-client.js" "$OUT/api-client.js"
+cp "$SRC/favicon.svg" "$OUT/favicon.svg"
 
 # 3. Config: prefer a real config.js, fall back to the example with a warning.
 if [ -f "$SRC/config.js" ]; then

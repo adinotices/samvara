@@ -23,7 +23,7 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import auth, beeminder, ratchet
@@ -67,8 +67,10 @@ def _note(cm: dict[str, Any], outcome: str) -> str:
 
 
 # ── email OTP login (no auth required — these are how you get auth) ──────────
-@app.post("/v1/auth/send-code", status_code=204)
-async def send_code(body: SendCodeBody) -> None:
+# No return annotation: fastapi 0.115 reads `-> None` as a response model and
+# refuses it on a 204 route.
+@app.post("/v1/auth/send-code", status_code=204, response_class=Response)
+async def send_code(body: SendCodeBody):
     """Email a 6-digit OTP to the configured AUTH_EMAIL.
 
     Always returns 204: an unauthorised address, an active send-cooldown, and a

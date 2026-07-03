@@ -12,11 +12,15 @@ app = "samvara-api"
 primary_region = "iad"
 
 [build]
-  dockerfile = "backend/Dockerfile"
+  # Relative to THIS file. Deploy with the backend dir as the build context:
+  #   flyctl deploy ./backend -c deploy/fly/fly.toml
+  dockerfile = "../../backend/Dockerfile"
 
 [env]
   AUTH_MODE = "token"
-  ALLOWED_ORIGINS = "https://samvara.app"
+  # Both origins the frontend may be served from: the custom domain and the
+  # bare GitHub Pages origin (used until samvara.app DNS is configured).
+  ALLOWED_ORIGINS = "https://samvara.app,https://adinotices.github.io"
   BEEMINDER_DRYRUN = "true"
   MIN_STAKE = "1.00"
   MAX_CHARGE_USD = "50.00"

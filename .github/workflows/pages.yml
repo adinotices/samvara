@@ -49,7 +49,10 @@ jobs:
 
       - name: Build dist/
         env:
-          CNAME: ${{ vars.SAMVARA_CNAME || 'samvara.app' }}
+          # Set the SAMVARA_CNAME repo variable (e.g. samvara.app) once the
+          # domain's DNS points at GitHub Pages AND the custom domain is added
+          # in Pages settings. A CNAME for an unconfigured domain breaks deploys.
+          CNAME: ${{ vars.SAMVARA_CNAME || '' }}
         run: bash scripts/build-frontend.sh
 
       - uses: actions/upload-pages-artifact@v3

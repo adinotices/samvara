@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
@@ -182,6 +183,11 @@ async def update_settings(patch: SettingsPatch) -> dict[str, Any]:
 # (Process-level, like store.lock — hence the single-worker Dockerfile CMD.)
 _charge_lock = asyncio.Lock()
 
+# monotonic timestamp of the last live lapse charge per commitment, for the
+# duplicate-report debounce below. In-memory is enough: single worker, and the
+# window is seconds.
+_recent_lapse: dict[str, float] = {}
+
 
 async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
     """Shared body for slip ('lapse') and miss ('missed').
@@ -207,6 +213,17 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
         # commitment while we waited on the lock.
         cm = _require(cid)
         cur = cm["current_rung"]
+        if (cur["completed"] or cur["awaiting_decision"]
+                or cur["awaiting_recommit"] or cur["auto_missed"]):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This rung is already resolved (it may have just auto-charged); "
+                "recommit instead of reporting a lapse.")
+        last = _recent_lapse.get(cid)
+        if last is not None and time.monotonic() - last < settings.lapse_debounce_s:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Duplicate lapse report: a charge for this commitment just landed.")
         charged = cur["stake"]
         new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
         result["charged"] = charged
@@ -221,6 +238,7 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
             store.add_total_charged(charged)
             store.update_commitment(cm)
+        _recent_lapse[cid] = time.monotonic()
 
     result["commitment"] = cm
     result["charge"] = charge.as_dict()
@@ -244,12 +262,13 @@ async def auto_miss(cid: str) -> dict[str, Any]:
     async with _charge_lock:
         # The idempotency check must sit inside the lock, before the charge —
         # otherwise a concurrent /tick could also pass it and charge again.
+        # is_past_grace covers both the resolved flags AND the time window, so
+        # a rung freshly re-rung by a racing /slip (its due date now days away)
+        # is a no-op here rather than a second charge.
         cm = _require(cid)
-        r = cm["current_rung"]
-        already = (r["auto_missed"] or r["awaiting_recommit"]
-                   or r["awaiting_decision"] or r["completed"])
-        if already:
+        if not ratchet.is_past_grace(cm, settings.grace_ms):
             return cm
+        r = cm["current_rung"]
 
         charged = r["stake"]
         try:

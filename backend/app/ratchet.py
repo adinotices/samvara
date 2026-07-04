@@ -18,6 +18,7 @@ this module stays trivially testable.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import uuid
 from typing import Any
 
@@ -69,16 +70,23 @@ def make_rung(days: int, stake: float, start_ms: int, **opts: Any) -> Rung:
 
 def clamp_days(v: Any, default: int = 1) -> int:
     try:
-        return max(1, round(float(v)))
+        f = float(v)
     except (TypeError, ValueError):
         return default
+    # Infinity/NaN survive float() and would poison due-date arithmetic.
+    if not math.isfinite(f):
+        return default
+    return max(1, round(f))
 
 
 def clamp_stake(v: Any, default: float = 1.0) -> float:
     try:
-        return max(1.0, float(v))
+        f = float(v)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(f):
+        return default
+    return max(1.0, f)
 
 
 def new_commitment(name: str, base_days: Any, base_stake: Any) -> Commitment:

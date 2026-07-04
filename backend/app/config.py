@@ -53,6 +53,10 @@ class Settings:
     # ── money safety rails ───────────────────────────────────────────────
     min_stake: float = float(os.environ.get("MIN_STAKE", "1.00"))   # Beeminder floor
     max_charge: float = float(os.environ.get("MAX_CHARGE_USD", "50.00"))
+    # A second live slip/miss on the same commitment inside this window is
+    # rejected as a duplicate (a double-clicked confirm would otherwise charge
+    # the freshly re-rung stake too).
+    lapse_debounce_s: float = float(os.environ.get("LAPSE_DEBOUNCE_S", "10"))
 
     # ── email / OTP auth ────────────────────────────────────────────────────
     # Resend (https://resend.com) API key for sending OTP emails.

@@ -37,9 +37,12 @@ public class MainActivity extends Activity {
     static final String SITE = "https://samvara.app/";
     static final int JOB_ID = 1;
     static final long POLL_INTERVAL_MS = 15 * 60 * 1000L;   // JobScheduler minimum
-    static final int PAGE_BG = 0xFFF4F2EE;   // the page's light-mode --bg
+    static final int PAGE_BG_LIGHT = 0xFFF4F2EE;   // the page's light --bg
+    static final int PAGE_BG_DARK = 0xFF161713;    // the page's dark --bg
+    static final String PREF_DARK = "darkTheme";
 
     private WebView web;
+    private FrameLayout frame;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -49,14 +52,12 @@ public class MainActivity extends Activity {
         web = new WebView(this);
         // Pad a wrapper, not the WebView: WebView does not reliably honor its
         // own padding, which left the page top under the status-bar clock.
-        FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(PAGE_BG);   // matches the page's light --bg
+        frame = new FrameLayout(this);
         frame.addView(web);
         setContentView(frame);
 
         // targetSdk 35 enforces edge-to-edge: inset the frame by the system
-        // bars, and ask for dark status-bar icons so they don't vanish
-        // against the light page background.
+        // bars. Colors and icon appearance follow the page theme.
         if (Build.VERSION.SDK_INT >= 30) {
             frame.setOnApplyWindowInsetsListener((v, insets) -> {
                 android.graphics.Insets sb = insets.getInsets(
@@ -64,12 +65,24 @@ public class MainActivity extends Activity {
                 v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
                 return WindowInsets.CONSUMED;
             });
-            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-            getWindow().getInsetsController().setSystemBarsAppearance(light, light);
         } else {
             frame.setFitsSystemWindows(true);
         }
+        // Last known theme, so a dark-mode user doesn't get a light flash
+        // before the page boots and re-syncs over the bridge.
+        applyTheme(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_DARK, false));
+
+        // The page calls window.SamvaraShell.onTheme('1'|'0') on boot and on
+        // every Dark/Light toggle (see setTheme in frontend/src/app.html).
+        web.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public void onTheme(String dark) {
+                boolean d = "1".equals(dark);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putBoolean(PREF_DARK, d).apply();
+                runOnUiThread(() -> applyTheme(d));
+            }
+        }, "SamvaraShell");
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -135,6 +148,19 @@ public class MainActivity extends Activity {
                 e.apply();
             } catch (Exception ignored) { }
         });
+    }
+
+    /** Match the system-bar strip and icon contrast to the page theme. */
+    private void applyTheme(boolean dark) {
+        int bg = dark ? PAGE_BG_DARK : PAGE_BG_LIGHT;
+        frame.setBackgroundColor(bg);
+        web.setBackgroundColor(bg);   // covers the pre-paint flash too
+        if (Build.VERSION.SDK_INT >= 30) {
+            int lightIcons = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            getWindow().getInsetsController()
+                    .setSystemBarsAppearance(dark ? 0 : lightIcons, lightIcons);
+        }
     }
 
     private void requestNotificationPermission() {

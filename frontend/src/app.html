@@ -1032,7 +1032,15 @@ class Component extends DCLogic {
     authed: (() => { try { return localStorage.getItem('samvara.authed') === '1'; } catch (e) { return false; } })(),
     authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '',
     reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '',
-    dark: !!this.props.defaultDark,
+    // Persisted so the theme survives reloads (the Android shell fetches a
+    // fresh page on every cold start, which reset an unpersisted toggle).
+    dark: (() => {
+      try {
+        const v = localStorage.getItem('samvara.dark');
+        if (v !== null) return v === '1';
+      } catch (e) {}
+      return !!this.props.defaultDark;
+    })(),
     view: 'dashboard',
     selectedId: null,
     commitments: [],
@@ -1050,6 +1058,7 @@ class Component extends DCLogic {
   };
 
   async componentDidMount() {
+    this.notifyShellTheme(this.state.dark);   // sync the shell on boot
     this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
     await this.api.init();
     try {
@@ -1101,6 +1110,22 @@ class Component extends DCLogic {
   }
 
   // ── theme ────────────────────────────────────────────────
+  setTheme(dark) {
+    this.setState({ dark });
+    try { localStorage.setItem('samvara.dark', dark ? '1' : '0'); } catch (e) {}
+    this.notifyShellTheme(dark);
+  }
+
+  // The Android shell registers window.SamvaraShell so it can recolor the
+  // system-bar strip to match the page. Absent in a plain browser — no-op.
+  notifyShellTheme(dark) {
+    try {
+      if (window.SamvaraShell && window.SamvaraShell.onTheme) {
+        window.SamvaraShell.onTheme(dark ? '1' : '0');
+      }
+    } catch (e) {}
+  }
+
   lightVars() {
     return { '--bg': '#f4f2ee', '--surface': '#fbfaf7', '--surface2': '#eceae4', '--fg': '#1d1c19', '--muted': '#77746c', '--faint': '#a8a49b', '--line': '#e4e0d8', '--accent': '#3d6b52', '--accent-fg': '#ffffff', '--success': '#3d6b52', '--lapse': '#9c7d33', '--missed': '#a3573a', '--shadow': 'rgba(35,32,26,.08)' };
   }
@@ -1558,7 +1583,7 @@ class Component extends DCLogic {
       cPreview: (S.cDays || '—') + '-day base rung · ' + this.money(Number(S.cStake) || 0) + ' at stake',
       sApiBase: S.sApiBase, sRecipient: S.sRecipient,
       // nav / handlers
-      toggleDark: () => this.setState(s => ({ dark: !s.dark })),
+      toggleDark: () => { this.setTheme(!this.state.dark); },
       goDashboard: () => this.setState({ view: 'dashboard' }),
       goCreate: () => this.setState({ view: 'create', cName: '', cDays: '1', cStake: '1', cError: '' }),
       goSettings: () => this.setState({ view: 'settings', sApiBase: S.settings.apiBaseUrl, sRecipient: S.settings.recipient }),

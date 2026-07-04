@@ -1388,11 +1388,10 @@ class Component extends DCLogic {
 
     const series = M.series || {};
     const today = M.today;
-    // The ratio denominator starts on the first day ANY metric saw data.
-    // Count>0 only: a +1 undone back to 0 was a misclick, not tracking.
-    const allDays = Object.values(series)
-      .flatMap(s => Object.keys(s).filter(d => s[d] > 0)).sort();
-    const start = allDays.length ? allDays[0] : null;
+    // Tracking officially began 2026-07-03: graphs and the ratio denominator
+    // start there, with zeros filled in for days that saw no data.
+    const TRACK_START = '2026-07-03';
+    const start = today >= TRACK_START ? TRACK_START : today;
     // Ratios use the FULL range since tracking began; graphs cap at the last
     // 180 days so the bars stay readable.
     const days = start ? this.dayRange(start, today) : [];

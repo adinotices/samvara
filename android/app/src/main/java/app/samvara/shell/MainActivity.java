@@ -102,6 +102,11 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
         } else {
+            // Cold start: drop the HTTP cache so every open fetches the latest
+            // deploy. WebView's cache heuristics otherwise serve a stale page
+            // well past its max-age, defeating the "site deploy == app update"
+            // premise. localStorage (the session) is untouched by this.
+            web.clearCache(true);
             web.loadUrl(SITE);
         }
 

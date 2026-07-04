@@ -48,6 +48,9 @@ export:
   from the bundle's document-swap context, which left the app stuck on
   "Loading…" forever (the mock never hit this path, so the raw export ships
   broken here);
+- boot error handling: a failed first data-load shows a "Couldn't reach the
+  server" card with a Retry button instead of an eternal "Loading…", and an
+  expired session (401) clears itself and lands on the sign-in gate;
 - a dashboard empty state, a `<title>`, and a favicon link.
 
 If you ever re-export a fresh bundle, those edits must be reapplied; the build
@@ -74,7 +77,11 @@ backend/
     auth.py        email OTP sign-in: code issue/verify, 30-day sessions
     security.py    bearer auth (session or static token) + request schemas
     config.py      all env-driven configuration
-  tests/test_ratchet.py   parity tests pinning the mock's semantics
+  tests/
+    test_ratchet.py    parity tests pinning the mock's semantics
+    test_auth.py       OTP flow, brute-force caps, token handling
+    test_beeminder.py  charge-client rails: floor/cap, dryrun, failure modes
+    test_money.py      HTTP-layer money invariants: races, ledger, edge cases
   Dockerfile       single-worker container, SQLite on a /data volume
   requirements.txt
 
@@ -117,11 +124,12 @@ email and any 6-digit code, no email service needed. The API is now at
 Beeminder token set, read/create/confirm/choose and **dry-run** slips all work;
 live charges are refused until a token is configured.
 
-Run the parity tests:
+Run the tests (domain parity, auth, and the money-path invariants — no network
+needed; every Beeminder call is faked at the boundary):
 
 ```
 cd backend
-python -m pytest -q          # or: python tests/test_ratchet.py
+python -m pytest -q
 ```
 
 ### 2. Frontend
@@ -199,9 +207,9 @@ session token from the OTP flow (what the browser uses) or the static
 | POST | `/v1/commitments` | Create `{name, base_days, base_stake}`. |
 | POST | `/v1/commitments/{id}/confirm-clean` | Rung finished clean; await decision. No charge. |
 | POST | `/v1/commitments/{id}/choose-next` | Start the next rung `{days, stake}`. No charge. |
-| POST | `/v1/commitments/{id}/slip` | Report a slip. `{dryRun,raise,days,stake}`. Charges unless `dryRun`. |
+| POST | `/v1/commitments/{id}/slip` | Report a slip. `{dryRun,raise,days,stake}`. Charges unless `dryRun`; 409 on an already-resolved rung or a duplicate report. |
 | POST | `/v1/commitments/{id}/miss` | Same as slip, recorded as a miss. |
-| POST | `/v1/commitments/{id}/auto-miss` | Grace expired: charge + park. Idempotent. |
+| POST | `/v1/commitments/{id}/auto-miss` | Grace expired (server's clock): charge + park. Idempotent; no-op before expiry. |
 | POST | `/v1/tick` | Sweep all commitments past grace; charge + park each. |
 | GET | `/v1/settings` | `{apiBaseUrl, recipient, totalCharged}`. |
 | PATCH | `/v1/settings` | Merge a settings patch. |
@@ -217,15 +225,28 @@ default (overridable), and **never shortens** it. `suggestNextRung(days)` is
 
 - **Dry-run by default.** `BEEMINDER_DRYRUN=true` routes every charge through
   Beeminder's own dryrun flag: the call is made and validated but no money moves.
-  Verify the full flow, then set it to `false` to arm real charges.
+  Verify the full flow, then set it to `false` to arm real charges. (The Fly
+  config in this repo, `deploy/fly/fly.toml`, is **armed** — the deployed
+  instance charges real money.)
 - **Hard per-charge cap.** `MAX_CHARGE_USD` (default $50) is enforced server-side.
   Any single charge above it is refused regardless of what the client sends.
+  The cap is **per charge** — there is no aggregate cap across commitments or
+  time; `totalCharged` in settings is a ledger, not a limiter.
 - **Charge-then-persist.** On a live slip/miss/auto-miss the server charges
   Beeminder *before* it mutates or saves state. A failed charge leaves the ledger
   untouched — you're never advanced without the charge landing, nor charged
   without it being recorded.
-- **Idempotent auto-miss.** Repeated ticks or retries can't double-charge a
-  commitment that's already been auto-missed and parked.
+- **No interleaving charges twice.** All charging paths are serialized behind
+  one lock and re-check state inside it: a slip that races the cron tick gets a
+  409 instead of a second charge; an auto-miss that races a slip is a no-op
+  (grace is re-checked against the *server's* clock); a double-clicked confirm
+  is rejected as a duplicate within `LAPSE_DEBOUNCE_S` (default 10s); repeated
+  ticks skip anything already parked.
+
+These invariants are pinned by `tests/test_money.py` and `tests/test_beeminder.py`
+— including "failed charge leaves state untouched" for every endpoint, the race
+interleavings above, and a ledger-balance check (sum of charges ==
+`totalCharged` == charged history).
 
 ### Sign-in
 

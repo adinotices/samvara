@@ -53,9 +53,23 @@ export:
   expired session (401) clears itself and lands on the sign-in gate;
 - a dashboard empty state, a `<title>`, and a favicon link.
 
-If you ever re-export a fresh bundle, those edits must be reapplied; the build
-guard refuses to ship a bundle that still carries the mock gate or a personal
-address.
+All of those edits live in `frontend/src/app.html`. The design tool's export is
+one 800KB single-line file with the app embedded as a JSON string — unreadable
+and hostile to diffs — so the repo keeps it **unpacked**: `src/app.html` is the
+decoded app (readable, diffable, the file you edit) and `src/shell.html` is the
+untouched runtime shell. The build recomposes them losslessly
+(`scripts/pack_bundle.py`; the round-trip is byte-identical).
+
+To import a fresh export from the design tool, unpack it next to the current
+source and merge deliberately — never paste it over:
+
+```
+scripts/unpack_bundle.py ~/Downloads/export.html /tmp/fresh
+diff frontend/src/app.html /tmp/fresh/app.html
+```
+
+The build guard still refuses to ship a bundle carrying the mock gate or a
+personal address, so an unmerged export fails the build instead of leaking.
 
 Why split this way: GitHub Pages is static and can't safely hold a Beeminder
 token or charge money, so anything involving the token or money lives in the
@@ -86,12 +100,17 @@ backend/
   requirements.txt
 
 frontend/
-  index.html       the raw bundle (source; transformed at build time)
+  src/
+    app.html       the app's actual HTML/JS, unpacked and readable — EDIT THIS
+    shell.html     bundle runtime/fonts/resources — machine territory
+  index.html       generated from src/ by the build (git-ignored)
   api-client.js    the REAL fetch client (drop-in for the mock)
   config.example.js   copy to config.js per environment (git-ignored)
 
 scripts/
   build-frontend.sh     assembles dist/ for static hosting
+  pack_bundle.py        recomposes frontend/index.html from frontend/src/
+  unpack_bundle.py      splits an exported bundle into src/ (for re-imports)
   transform_bundle.py   strips the bundled mock, injects the config loader
 
 .github/workflows/

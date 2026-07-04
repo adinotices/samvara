@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<title>Saṃvara</title>
+
+<script src="04f486fc-a03d-4d0c-bb38-a6dba0ae24dc"></script>
+</head>
+<body>
+
+<x-dc>
+<helmet data-dc-atomics="">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:#f4f2ee;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  input,button,textarea,select{font-family:inherit}
+  button{cursor:pointer}
+  ::-webkit-scrollbar{height:8px;width:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(120,116,108,.35);border-radius:8px}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("4c5767fa-0f49-4035-9956-ef078e0f91a6") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("97d63c31-b12d-4175-9a31-7b5b27205286") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a7bfccc0-cc79-4889-8239-f8e16518caf3") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("817f34f9-c7b1-438e-b734-51713243367b") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("65334868-ff65-4a8b-8c7d-2e40d2b03891") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("aca40276-b23f-4be2-a9be-26bfdeebcb8a") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("f8278a87-9331-425c-ba72-be989b251afd") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("5a54eb86-8215-4148-b574-5d18c30aacb6") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("aa6a861c-7d06-4ff8-8c08-4d7616885cb6") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("941d03a3-c19d-4025-b4a9-e581a5c293f5") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("c7781b35-c72c-4c06-9ca4-909653dcfc98") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("cacc8161-c714-486a-9be3-238d368a03da") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("29f6f7e3-7dd6-46d0-a404-f58c52f92129") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("f7daa635-60e1-4944-9f04-b244fa06df20") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("e8c88531-4ac5-4c0c-b014-e2ae9af9ec0f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("7d66b577-2ff5-47b1-b2e4-895888236a4e") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("c7781b35-c72c-4c06-9ca4-909653dcfc98") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("cacc8161-c714-486a-9be3-238d368a03da") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("29f6f7e3-7dd6-46d0-a404-f58c52f92129") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("f7daa635-60e1-4944-9f04-b244fa06df20") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("e8c88531-4ac5-4c0c-b014-e2ae9af9ec0f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("7d66b577-2ff5-47b1-b2e4-895888236a4e") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("c7781b35-c72c-4c06-9ca4-909653dcfc98") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("cacc8161-c714-486a-9be3-238d368a03da") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("29f6f7e3-7dd6-46d0-a404-f58c52f92129") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("f7daa635-60e1-4944-9f04-b244fa06df20") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("e8c88531-4ac5-4c0c-b014-e2ae9af9ec0f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("7d66b577-2ff5-47b1-b2e4-895888236a4e") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("7c13e058-ba2b-4d4f-9cbe-29230e5d6697") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("77530d5a-0f0a-4c33-b2a7-7b1e1025e89d") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bbc73b06-f8f5-48fa-bf20-eb0e08da0d98") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("7c13e058-ba2b-4d4f-9cbe-29230e5d6697") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("77530d5a-0f0a-4c33-b2a7-7b1e1025e89d") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bbc73b06-f8f5-48fa-bf20-eb0e08da0d98") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("7c13e058-ba2b-4d4f-9cbe-29230e5d6697") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("77530d5a-0f0a-4c33-b2a7-7b1e1025e89d") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bbc73b06-f8f5-48fa-bf20-eb0e08da0d98") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <!-- ══ AUTH GATE ════════════════════════════════════════ -->
+  <sc-if value="{{ showAuth }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px">
+      <div style="width:100%;max-width:396px;display:flex;flex-direction:column;gap:22px">
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center">
+          <div style="width:54px;height:54px;border-radius:16px;background:var(--accent,#3d6b52);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px var(--shadow,rgba(35,32,26,.12))">
+            <svg width="29" height="29" viewBox="0 0 24 24" fill="var(--accent-fg,#fff)" aria-hidden="true">
+              <rect x="3.5" y="13" width="3.6" height="7" rx="1.4"></rect>
+              <rect x="10.2" y="9" width="3.6" height="11" rx="1.4"></rect>
+              <rect x="16.9" y="4.5" width="3.6" height="15.5" rx="1.4"></rect>
+            </svg>
+          </div>
+          <div>
+            <div style="font-family:'Newsreader',serif;font-size:27px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.015em;line-height:1.1">Saṃvara</div>
+            <div style="font-size:12px;color:var(--muted,#77746c);margin-top:2px">heedfulness, made winnable</div>
+          </div>
+        </div>
+
+        <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:18px;padding:24px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));display:flex;flex-direction:column;gap:17px">
+
+          <!-- EMAIL -->
+          <sc-if value="{{ auth.isEmail }}">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h1 style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Sign in</h1>
+              <p style="margin:0;font-size:13px;color:var(--muted,#77746c);line-height:1.55">Enter your email and we'll send a 6-digit sign-in code.</p>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Email</span><input value="{{ auth.email }}" oninput="{{ auth.setEmail }}" onkeydown="{{ auth.onEmailKey }}" type="email" autocomplete="email" placeholder="you@example.com" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:46px"></label>
+            <sc-if value="{{ auth.hasError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ auth.error }}</div></sc-if>
+            <button onclick="{{ auth.sendCode }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Send code</button>
+          </sc-if>
+
+          <!-- CODE -->
+          <sc-if value="{{ auth.isCode }}">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h1 style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Enter your code</h1>
+              <p style="margin:0;font-size:13px;color:var(--muted,#77746c);line-height:1.55">We sent a 6-digit code to <strong style="color:var(--fg,#1d1c19)">{{ auth.email }}</strong>. It expires in 10 minutes.</p>
+            </div>
+            <input value="{{ auth.codeInput }}" oninput="{{ auth.setCode }}" onkeydown="{{ auth.onCodeKey }}" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" style="width:100%;text-align:center;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:26px;letter-spacing:.42em;font-family:'IBM Plex Mono',monospace;min-height:56px">
+            <sc-if value="{{ auth.hasError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ auth.error }}</div></sc-if>
+            <sc-if value="{{ auth.hasNotice }}"><div style="font-size:12.5px;color:var(--muted,#77746c)">{{ auth.notice }}</div></sc-if>
+            <button onclick="{{ auth.verify }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Verify &amp; sign in</button>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button onclick="{{ auth.resend }}" style="background:transparent;border:none;color:var(--accent,#3d6b52);font-size:13px;min-height:40px;padding:0 8px">Resend code</button>
+              <span style="color:var(--faint,#a8a49b);align-self:center">·</span>
+              <button onclick="{{ auth.backToEmail }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;min-height:40px;padding:0 8px">Use a different email</button>
+            </div>
+          </sc-if>
+
+          <!-- DENIED -->
+          <sc-if value="{{ auth.isDenied }}">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <h1 style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Not publicly available</h1>
+              <p style="margin:0;font-size:13px;color:var(--muted,#77746c);line-height:1.6">Saṃvara is a private, personal app — <strong style="color:var(--fg,#1d1c19)">{{ auth.deniedEmail }}</strong> isn't on the list. If you'd like to use it, you can request access below.</p>
+            </div>
+            <button onclick="{{ auth.goRequest }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Request access</button>
+            <button onclick="{{ auth.backToEmail }}" style="align-self:center;background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;min-height:40px">← Try another email</button>
+          </sc-if>
+
+          <!-- REQUEST -->
+          <sc-if value="{{ auth.isRequest }}">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h1 style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Request access</h1>
+              <p style="margin:0;font-size:13px;color:var(--muted,#77746c);line-height:1.55">Tell me a little about yourself and I'll be in touch.</p>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Your name</span><input value="{{ auth.reqName }}" oninput="{{ auth.setReqName }}" placeholder="Jane Doe" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:46px"></label>
+            <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Your email</span><input value="{{ auth.reqEmail }}" oninput="{{ auth.setReqEmail }}" type="email" placeholder="you@example.com" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:46px"></label>
+            <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Message</span><textarea value="{{ auth.reqMsg }}" oninput="{{ auth.setReqMsg }}" rows="3" placeholder="A little about why you'd like access…" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:14px;min-height:84px;resize:vertical;line-height:1.5"></textarea></label>
+            <sc-if value="{{ auth.hasReqError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ auth.reqError }}</div></sc-if>
+            <button onclick="{{ auth.sendRequest }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Send request</button>
+            <button onclick="{{ auth.backToEmail }}" style="align-self:center;background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;min-height:40px">← Back to sign in</button>
+          </sc-if>
+
+          <!-- REQUEST DONE -->
+          <sc-if value="{{ auth.isRequestDone }}">
+            <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:6px 0">
+              <div style="width:46px;height:46px;border-radius:50%;background:color-mix(in srgb,var(--accent,#3d6b52) 16%,transparent);color:var(--accent,#3d6b52);display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1">✓</div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h1 style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Request sent</h1>
+                <p style="margin:0;font-size:13px;color:var(--muted,#77746c);line-height:1.6">Thanks — your message is on its way. I'll reply to <strong style="color:var(--fg,#1d1c19)">{{ auth.reqEmailShown }}</strong> soon.</p>
+              </div>
+            </div>
+            <button onclick="{{ auth.backToEmail }}" style="min-height:48px;border-radius:10px;background:transparent;border:1px solid var(--line,#e4e0d8);color:var(--fg,#1d1c19);font-size:14px">Back to sign in</button>
+          </sc-if>
+
+        </div>
+
+        <div style="text-align:center;font-size:11px;color:var(--faint,#a8a49b)">Private build · access by invitation</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showApp }}">
+  <!-- ── app bar ─────────────────────────────────────────── -->
+  <div style="position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px 16px;background:color-mix(in srgb,var(--surface,#fbfaf7) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line,#e4e0d8)">
+    <div onclick="{{ goDashboard }}" style="cursor:pointer;display:flex;align-items:center;gap:11px">
+      <div style="flex:none;width:34px;height:34px;border-radius:10px;background:var(--accent,#3d6b52);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08))">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="var(--accent-fg,#fff)" aria-hidden="true">
+          <rect x="3.5" y="13" width="3.6" height="7" rx="1.4"></rect>
+          <rect x="10.2" y="9" width="3.6" height="11" rx="1.4"></rect>
+          <rect x="16.9" y="4.5" width="3.6" height="15.5" rx="1.4"></rect>
+        </svg>
+      </div>
+      <div style="line-height:1.1">
+        <div style="font-family:'Newsreader',serif;font-size:21px;font-weight:600;letter-spacing:-.01em;color:var(--fg,#1d1c19)">Saṃvara</div>
+        <div style="font-size:10.5px;color:var(--muted,#77746c);letter-spacing:.02em">heedfulness, made winnable</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div onclick="{{ goSettings }}" title="Lifetime total charged" style="cursor:pointer;display:flex;flex-direction:column;align-items:flex-end;padding:4px 12px;border-radius:10px;background:var(--surface2,#eceae4)">
+        <span style="font-size:9px;letter-spacing:.06em;color:var(--faint,#a8a49b);text-transform:uppercase">Charged</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--fg,#1d1c19)">{{ totalChargedFmt }}</span>
+      </div>
+      <button onclick="{{ toggleDark }}" style="min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--fg,#1d1c19);font-size:13px">{{ darkLabel }}</button>
+      <button onclick="{{ goSettings }}" title="Settings" style="min-height:40px;width:40px;padding:0;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--fg,#1d1c19);display:flex;align-items:center;justify-content:center">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+      <button onclick="{{ goCreate }}" style="min-height:40px;padding:0 16px;border-radius:10px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13px;font-weight:600">New</button>
+    </div>
+  </div>
+
+  <div style="max-width:640px;margin:0 auto;padding:20px 16px 96px">
+
+    <sc-if value="{{ notLoaded }}" hint-placeholder-val="{{ true }}">
+      <sc-if value="{{ noBootError }}" hint-placeholder-val="{{ true }}">
+        <div style="text-align:center;color:var(--muted,#77746c);padding:70px 0;font-size:14px">Loading…</div>
+      </sc-if>
+      <sc-if value="{{ hasBootError }}">
+        <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">Couldn’t reach the server — {{ bootError }}<br><button onclick="{{ reloadPage }}" style="margin-top:14px;min-height:44px;padding:0 22px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:14px;font-weight:600">Retry</button></div>
+      </sc-if>
+    </sc-if>
+
+    <!-- ── DASHBOARD ─────────────────────────────────────── -->
+    <sc-if value="{{ isDashboard }}">
+     <sc-if value="{{ loaded }}">
+      <h1 style="font-family:'Newsreader',serif;font-size:27px;font-weight:600;margin:2px 0 4px;color:var(--fg,#1d1c19);letter-spacing:-.015em">Commitments</h1>
+      <p style="margin:0 0 20px;color:var(--muted,#77746c);font-size:13.5px;line-height:1.5">One rung at a time. Reach the deadline clean, then choose to climb — slip, and recommit to the same rung.</p>
+
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <sc-for list="{{ cards }}" as="card" hint-placeholder-count="4">
+
+          <!-- ── detailed variant ── -->
+          <sc-if value="{{ card.variantDetailed }}">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:20px;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div style="min-width:0">
+                  <div style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.01em;line-height:1.15">{{ card.name }}</div>
+                  <div style="font-size:15px;color:var(--muted,#77746c);margin-top:5px">{{ card.rungLabel }} · <span style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--fg,#1d1c19)">{{ card.stakeFmt }}</span> at stake</div>
+                </div>
+                <sc-if value="{{ card.isActive }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--accent,#3d6b52) 14%,transparent);color:var(--accent,#3d6b52)">On a rung</span></sc-if>
+                <sc-if value="{{ card.isReset }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:var(--surface2,#eceae4);color:var(--muted,#77746c)">Fresh start</span></sc-if>
+                <sc-if value="{{ card.isPassed }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent);color:var(--missed,#a3573a)">Awaiting confirmation</span></sc-if>
+                <sc-if value="{{ card.isRecommit }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent);color:var(--missed,#a3573a)">Auto-charged</span></sc-if>
+                <sc-if value="{{ card.isAwaiting }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--accent,#3d6b52) 14%,transparent);color:var(--accent,#3d6b52)">Rung complete</span></sc-if>
+              </div>
+
+              <!-- running (active or reset) -->
+              <sc-if value="{{ card.isRunning }}">
+                <div style="display:flex;flex-direction:column;gap:15px">
+                  <sc-if value="{{ card.isReset }}">
+                    <div style="font-size:12.5px;line-height:1.5;color:var(--muted,#77746c);background:var(--surface2,#eceae4);border-radius:10px;padding:10px 12px">Recommitted to your {{ card.rungLabel }} after a slip — same length, fresh start.</div>
+                  </sc-if>
+                  <div>
+                    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint,#a8a49b);margin-bottom:8px">Deadline in</div>
+                    <div style="display:flex;align-items:flex-end;gap:9px;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums">
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:38px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ card.cd.d }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">DAYS</span></div>
+                      <span style="font-size:30px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:15px">:</span>
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:38px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ card.cd.h }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">HRS</span></div>
+                      <span style="font-size:30px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:15px">:</span>
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:38px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ card.cd.m }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">MIN</span></div>
+                      <sc-if value="{{ card.showSeconds }}">
+                        <span style="font-size:30px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:15px">:</span>
+                        <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:38px;font-weight:400;line-height:1;color:var(--muted,#77746c)">{{ card.cd.s }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">SEC</span></div>
+                      </sc-if>
+                    </div>
+                  </div>
+                  <div style="height:4px;border-radius:999px;background:var(--surface2,#eceae4);overflow:hidden"><div style="height:100%;width:{{ card.progressPct }}%;background:var(--accent,#3d6b52);border-radius:999px"></div></div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+                      <button onclick="{{ card.onSlipQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px;font-weight:500">I slipped</button>
+                      <button onclick="{{ card.onSlip }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 14px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- deadline passed — 24h confirmation window -->
+              <sc-if value="{{ card.isPassed }}">
+                <div style="display:flex;flex-direction:column;gap:15px">
+                  <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19);background:color-mix(in srgb,var(--missed,#a3573a) 9%,transparent);border:1px solid color-mix(in srgb,var(--missed,#a3573a) 28%,transparent);border-radius:10px;padding:12px 14px">Deadline reached. You have <strong>24 hours</strong> to confirm. If you don't respond in time, it's assumed a miss — charged <span style="font-family:'IBM Plex Mono',monospace">{{ card.stakeFmt }}</span>, then parked for you to recommit.</div>
+                  <div>
+                    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--missed,#a3573a);margin-bottom:8px">Time left to confirm</div>
+                    <div style="display:flex;align-items:flex-end;gap:9px;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums">
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:34px;font-weight:500;line-height:1;color:var(--missed,#a3573a)">{{ card.cd.d }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">DAYS</span></div>
+                      <span style="font-size:26px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:14px">:</span>
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:34px;font-weight:500;line-height:1;color:var(--missed,#a3573a)">{{ card.cd.h }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">HRS</span></div>
+                      <span style="font-size:26px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:14px">:</span>
+                      <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:34px;font-weight:500;line-height:1;color:var(--missed,#a3573a)">{{ card.cd.m }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">MIN</span></div>
+                      <sc-if value="{{ card.showSeconds }}">
+                        <span style="font-size:26px;color:var(--faint,#a8a49b);line-height:1;padding-bottom:14px">:</span>
+                        <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:34px;font-weight:400;line-height:1;color:color-mix(in srgb,var(--missed,#a3573a) 70%,transparent)">{{ card.cd.s }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">SEC</span></div>
+                      </sc-if>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+                      <button onclick="{{ card.onConfirmCleanQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">I stayed clean</button>
+                      <button onclick="{{ card.onConfirmClean }}" title="Customize the next rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+                      <button onclick="{{ card.onMissQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px">I didn't make it</button>
+                      <button onclick="{{ card.onMiss }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- awaiting decision -->
+              <sc-if value="{{ card.isAwaiting }}">
+                <div style="display:flex;flex-direction:column;gap:15px">
+                  <div style="font-size:13.5px;line-height:1.55;color:var(--fg,#1d1c19)">Your {{ card.completedLabel }} came in clean. When you're ready, choose the next one — no rush, and only if you want to go further.</div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+                      <button onclick="{{ card.onDecisionQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">Advance to {{ card.suggestedLabel }}</button>
+                      <button onclick="{{ card.onDecision }}" title="Customize the next rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                  </div>
+                  <div style="font-size:11.5px;color:var(--faint,#a8a49b);line-height:1.5">Default advances +1 day at the same stake. Tap ⋯ to change the length or stake — nothing advances on its own.</div>
+                </div>
+              </sc-if>
+
+              <!-- auto-charged, awaiting recommit -->
+              <sc-if value="{{ card.isRecommit }}">
+                <div style="display:flex;flex-direction:column;gap:15px">
+                  <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19);background:color-mix(in srgb,var(--missed,#a3573a) 9%,transparent);border:1px solid color-mix(in srgb,var(--missed,#a3573a) 28%,transparent);border-radius:10px;padding:12px 14px">The confirmation window closed with no response, so this was assumed a miss — charged <span style="font-family:'IBM Plex Mono',monospace">{{ card.chargedFmt }}</span>. Nothing has restarted; recommit only when you choose to.</div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+                      <button onclick="{{ card.onRecommitQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">Recommit to {{ card.recommitDaysLabel }}</button>
+                      <button onclick="{{ card.onRecommit }}" title="Customize the recommit rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                  </div>
+                  <div style="font-size:11.5px;color:var(--faint,#a8a49b);line-height:1.5">Default recommits to the same {{ card.recommitDaysLabel }} rung at {{ card.recommitStakeFmt }}. Tap ⋯ to adjust — nothing restarts on its own.</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- ── quiet variant ── -->
+          <sc-if value="{{ card.variantQuiet }}">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <div style="font-family:'Newsreader',serif;font-size:17px;font-weight:600;color:var(--fg,#1d1c19);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ card.name }}</div>
+                <span style="flex:none;font-size:10.5px;font-weight:500;color:var(--muted,#77746c)">{{ card.stateLabel }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                <sc-if value="{{ card.isRunning }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--fg,#1d1c19);font-variant-numeric:tabular-nums">{{ card.cd.d }}d {{ card.cd.h }}:{{ card.cd.m }} left</span></sc-if>
+                <sc-if value="{{ card.isPassed }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--missed,#a3573a);font-variant-numeric:tabular-nums">{{ card.cd.h }}h {{ card.cd.m }}m to confirm</span></sc-if>
+                <sc-if value="{{ card.isAwaiting }}"><span style="font-size:14px;color:var(--accent,#3d6b52);font-weight:500">Rung complete</span></sc-if>
+                <sc-if value="{{ card.isRecommit }}"><span style="font-size:14px;color:var(--missed,#a3573a);font-weight:500">Auto-charged {{ card.chargedFmt }}</span></sc-if>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted,#77746c)">{{ card.stakeFmt }}</span>
+              </div>
+              <div style="height:3px;border-radius:999px;background:var(--surface2,#eceae4);overflow:hidden"><div style="height:100%;width:{{ card.progressPct }}%;background:var(--accent,#3d6b52)"></div></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <sc-if value="{{ card.isRunning }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))"><button onclick="{{ card.onSlipQuick }}" style="min-height:44px;padding:0 14px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:13.5px">I slipped</button><button onclick="{{ card.onSlip }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:18px;line-height:1">⋯</button></div></sc-if>
+                <sc-if value="{{ card.isPassed }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onConfirmCleanQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Stayed clean</button><button onclick="{{ card.onConfirmClean }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
+                <sc-if value="{{ card.isAwaiting }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onDecisionQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Advance to {{ card.suggestedLabel }}</button><button onclick="{{ card.onDecision }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
+                <sc-if value="{{ card.isRecommit }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onRecommitQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Recommit to {{ card.recommitDaysLabel }}</button><button onclick="{{ card.onRecommit }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
+                <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:9px;background:transparent;border:none;color:var(--muted,#77746c);font-size:13.5px">Details</button>
+              </div>
+            </div>
+          </sc-if>
+
+        </sc-for>
+
+        <sc-if value="{{ noCards }}">
+          <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">No current goals — create a <strong style="color:var(--fg,#1d1c19);font-weight:600">New</strong> goal to get started.</div>
+        </sc-if>
+      </div>
+     </sc-if>
+    </sc-if>
+
+    <!-- ── DETAIL ────────────────────────────────────────── -->
+    <sc-if value="{{ isDetail }}">
+      <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← All commitments</button>
+      <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 3px;color:var(--fg,#1d1c19);letter-spacing:-.015em">{{ detail.name }}</h1>
+      <p style="margin:0 0 20px;color:var(--muted,#77746c);font-size:12.5px">Base {{ detail.baseFmt }}</p>
+
+      <!-- current status -->
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:15px;margin-bottom:16px">
+        <sc-if value="{{ detail.isRunning }}">
+          <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint,#a8a49b)">Current · {{ detail.rungLabel }} · {{ detail.stakeFmt }} at risk</div>
+          <div style="display:flex;align-items:flex-end;gap:9px;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums">
+            <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:40px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ detail.cd.d }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">DAYS</span></div>
+            <span style="font-size:32px;color:var(--faint,#a8a49b);padding-bottom:15px">:</span>
+            <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:40px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ detail.cd.h }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">HRS</span></div>
+            <span style="font-size:32px;color:var(--faint,#a8a49b);padding-bottom:15px">:</span>
+            <div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:40px;font-weight:500;line-height:1;color:var(--fg,#1d1c19)">{{ detail.cd.m }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">MIN</span></div>
+            <sc-if value="{{ detail.showSeconds }}"><span style="font-size:32px;color:var(--faint,#a8a49b);padding-bottom:15px">:</span><div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:40px;font-weight:400;line-height:1;color:var(--muted,#77746c)">{{ detail.cd.s }}</span><span style="font-size:9px;color:var(--faint,#a8a49b);margin-top:5px;letter-spacing:.1em">SEC</span></div></sc-if>
+          </div>
+          <div style="height:4px;border-radius:999px;background:var(--surface2,#eceae4);overflow:hidden"><div style="height:100%;width:{{ detail.progressPct }}%;background:var(--accent,#3d6b52)"></div></div>
+          <div style="align-self:flex-start;display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+            <button onclick="{{ detail.onSlipQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px">I slipped</button>
+            <button onclick="{{ detail.onSlip }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ detail.isPassed }}">
+          <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19)">Deadline passed on the {{ detail.rungLabel }} — <span style="font-family:'IBM Plex Mono',monospace">{{ detail.cd.h }}h {{ detail.cd.m }}m</span> left to confirm. If the window closes first, it's assumed a miss ({{ detail.stakeFmt }}) and parked for you to recommit.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+              <button onclick="{{ detail.onConfirmCleanQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">I stayed clean</button>
+              <button onclick="{{ detail.onConfirmClean }}" title="Customize the next rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+            </div>
+            <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+              <button onclick="{{ detail.onMissQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px">I didn't make it</button>
+              <button onclick="{{ detail.onMiss }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ detail.isAwaiting }}">
+          <div style="font-size:13.5px;line-height:1.55;color:var(--fg,#1d1c19)">{{ detail.completedLabel }} complete and clean. Choose the next rung when you're ready.</div>
+          <div style="align-self:flex-start;display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+            <button onclick="{{ detail.onDecisionQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">Advance to {{ detail.suggestedLabel }}</button>
+            <button onclick="{{ detail.onDecision }}" title="Customize the next rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ detail.isRecommit }}">
+          <div style="font-size:13.5px;line-height:1.55;color:var(--fg,#1d1c19)">Assumed a miss after the confirmation window closed — auto-charged {{ detail.chargedFmt }}. Recommit to the {{ detail.recommitDaysLabel }} rung whenever you're ready.</div>
+          <div style="align-self:flex-start;display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
+            <button onclick="{{ detail.onRecommitQuick }}" style="min-height:44px;padding:0 18px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14px;font-weight:600">Recommit to {{ detail.recommitDaysLabel }}</button>
+            <button onclick="{{ detail.onRecommit }}" title="Customize the recommit rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- callouts -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+        <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:12px;padding:13px"><div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint,#a8a49b);margin-bottom:6px">Best clean</div><div style="font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--success,#3d6b52)">{{ detail.bestCleanLabel }}</div></div>
+        <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:12px;padding:13px"><div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint,#a8a49b);margin-bottom:6px">Current</div><div style="font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--fg,#1d1c19)">{{ detail.currentRungDaysLabel }}</div></div>
+        <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:12px;padding:13px"><div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint,#a8a49b);margin-bottom:6px">Charged</div><div style="font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--missed,#a3573a)">{{ detail.totalChargedThisFmt }}</div></div>
+      </div>
+
+      <!-- trend -->
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;margin-bottom:16px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px">
+          <h2 style="font-family:'Newsreader',serif;font-size:18px;font-weight:600;margin:0;color:var(--fg,#1d1c19)">Trend</h2>
+          <span style="font-size:10.5px;color:var(--faint,#a8a49b)">one mark per rung · height = days</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px;overflow-x:auto;padding:14px 0 6px;min-height:150px">
+          <sc-for list="{{ detail.timeline }}" as="e" hint-placeholder-count="8">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:0 0 auto">
+              <div style="{{ e.barStyle }}"></div>
+              <span style="font-size:9px;color:var(--faint,#a8a49b);font-family:'IBM Plex Mono',monospace">{{ e.dayLabel }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e4e0d8)">
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted,#77746c)"><span style="width:11px;height:11px;border-radius:3px;background:var(--success,#3d6b52)"></span>Clean</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted,#77746c)"><span style="width:11px;height:11px;border-radius:3px;background:var(--lapse,#9c7d33)"></span>Slipped</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted,#77746c)"><span style="width:11px;height:11px;border-radius:3px;background:var(--missed,#a3573a)"></span>Missed</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted,#77746c)"><span style="width:11px;height:11px;border-radius:3px;border:2px solid var(--accent,#3d6b52)"></span>In progress</span>
+        </div>
+      </div>
+
+      <!-- history -->
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:8px 20px 8px">
+        <h2 style="font-family:'Newsreader',serif;font-size:18px;font-weight:600;margin:14px 0 4px;color:var(--fg,#1d1c19)">History</h2>
+        <sc-if value="{{ detail.hasHistory }}">
+          <sc-for list="{{ detail.historyRows }}" as="h" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line,#e4e0d8)">
+              <span style="width:9px;height:9px;border-radius:50%;flex:none;background:{{ h.dotColor }}"></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;color:var(--fg,#1d1c19);font-weight:500">{{ h.outcomeLabel }} · {{ h.daysLabel }} rung</div>
+                <div style="font-size:11px;color:var(--faint,#a8a49b)">{{ h.settled }}</div>
+              </div>
+              <div style="text-align:right;flex:none">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--fg,#1d1c19)">{{ h.amount }}</div>
+                <div style="font-size:10px;color:var(--faint,#a8a49b)">{{ h.amountNote }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ detail.noHistory }}"><div style="padding:16px 0;color:var(--muted,#77746c);font-size:13px">No rungs recorded yet.</div></sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ── CREATE ────────────────────────────────────────── -->
+    <sc-if value="{{ isCreate }}">
+      <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← Cancel</button>
+      <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 6px;color:var(--fg,#1d1c19);letter-spacing:-.015em">New commitment</h1>
+      <p style="margin:0 0 22px;color:var(--muted,#77746c);font-size:13px;line-height:1.55">The base rung is where you land after any slip — keep it short and the stake small, so restarting is never daunting.</p>
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:18px">
+        <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c);letter-spacing:.02em">What are you committing to?</span><input value="{{ cName }}" oninput="{{ setCName }}" placeholder="e.g. No alcohol on weeknights" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:44px"></label>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <label style="display:flex;flex-direction:column;gap:7px;flex:1;min-width:120px"><span style="font-size:12px;color:var(--muted,#77746c)">Base length (days)</span><input value="{{ cDays }}" oninput="{{ setCDays }}" inputmode="numeric" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:44px;font-family:'IBM Plex Mono',monospace"></label>
+          <label style="display:flex;flex-direction:column;gap:7px;flex:1;min-width:120px"><span style="font-size:12px;color:var(--muted,#77746c)">Base stake (USD, min $1)</span><input value="{{ cStake }}" oninput="{{ setCStake }}" inputmode="decimal" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:44px;font-family:'IBM Plex Mono',monospace"></label>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted,#77746c);background:var(--surface2,#eceae4);border-radius:10px;padding:11px 13px">{{ cPreview }}</div>
+        <sc-if value="{{ cHasError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ cError }}</div></sc-if>
+        <button onclick="{{ submitCreate }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Create commitment</button>
+      </div>
+    </sc-if>
+
+    <!-- ── NEXT-RUNG DECISION ────────────────────────────── -->
+    <sc-if value="{{ isDecision }}">
+      <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← Back</button>
+      <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 6px;color:var(--fg,#1d1c19);letter-spacing:-.015em">{{ decision.heading }}</h1>
+      <p style="margin:0 0 20px;color:var(--muted,#77746c);font-size:13px;line-height:1.55">{{ decision.lead }}</p>
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:12px;color:var(--muted,#77746c)">Rung length</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button onclick="{{ decision.daysMinus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">−</button>
+              <input value="{{ decision.daysValue }}" oninput="{{ setDecDays }}" inputmode="numeric" style="flex:1;min-width:0;text-align:center;padding:12px 6px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:16px;min-height:44px;font-family:'IBM Plex Mono',monospace">
+              <button onclick="{{ decision.daysPlus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">+</button>
+            </div>
+            <span style="font-size:10.5px;color:var(--faint,#a8a49b)">days · steps of 1</span>
+          </div>
+          <div style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:12px;color:var(--muted,#77746c)">Stake</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button onclick="{{ decision.stakeMinus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">−</button>
+              <input value="{{ decision.stakeValue }}" oninput="{{ setDecStake }}" inputmode="decimal" style="flex:1;min-width:0;text-align:center;padding:12px 6px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:16px;min-height:44px;font-family:'IBM Plex Mono',monospace">
+              <button onclick="{{ decision.stakePlus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">+</button>
+            </div>
+            <span style="font-size:10.5px;color:var(--faint,#a8a49b)">USD · steps of $1</span>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--fg,#1d1c19);background:var(--surface2,#eceae4);border-radius:10px;padding:12px 14px">Next: <span style="font-weight:600">{{ decision.previewLine }}</span> · <span style="font-family:'IBM Plex Mono',monospace">{{ decision.stakePreviewFmt }}</span> at stake</div>
+        <sc-if value="{{ decision.hasError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ decision.error }}</div></sc-if>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="{{ confirmDecision }}" style="flex:1;min-width:180px;min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">{{ decision.confirmLabel }}</button>
+          <button onclick="{{ goDashboard }}" style="min-height:48px;padding:0 18px;border-radius:10px;background:transparent;border:1px solid var(--line,#e4e0d8);color:var(--muted,#77746c);font-size:14px">Not now</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ── LAPSE / MISS CONFIRM ──────────────────────────── -->
+    <sc-if value="{{ isLapse }}">
+      <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← Back</button>
+      <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 6px;color:var(--fg,#1d1c19);letter-spacing:-.015em">{{ lapse.title }}</h1>
+      <p style="margin:0 0 20px;color:var(--muted,#77746c);font-size:13px;line-height:1.55">{{ lapse.name }} — {{ lapse.lead }}</p>
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0">
+          <span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint,#a8a49b)">You will be charged</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:46px;font-weight:500;color:var(--missed,#a3573a);line-height:1">{{ lapse.stakeFmt }}</span>
+          <span style="font-size:12px;color:var(--muted,#77746c)">to {{ lapse.recipient }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;background:var(--surface2,#eceae4);border-radius:12px;padding:16px">
+          <div style="font-size:12px;color:var(--muted,#77746c);font-weight:500">Then recommit</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:11.5px;color:var(--muted,#77746c)">Rung length</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="{{ lapse.daysMinus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">−</button>
+                <input value="{{ lapse.daysValue }}" oninput="{{ lapse.setDays }}" inputmode="numeric" style="flex:1;min-width:0;text-align:center;padding:12px 6px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:16px;min-height:44px;font-family:'IBM Plex Mono',monospace">
+                <button onclick="{{ lapse.daysPlus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">+</button>
+              </div>
+              <span style="font-size:10.5px;color:var(--faint,#a8a49b)">days · held by default</span>
+            </div>
+            <div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:11.5px;color:var(--muted,#77746c)">New stake</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <button onclick="{{ lapse.stakeMinus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">−</button>
+                <input value="{{ lapse.stakeValue }}" oninput="{{ lapse.setStake }}" inputmode="decimal" style="flex:1;min-width:0;text-align:center;padding:12px 6px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:16px;min-height:44px;font-family:'IBM Plex Mono',monospace">
+                <button onclick="{{ lapse.stakePlus }}" style="width:44px;height:44px;flex:none;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:20px;line-height:1">+</button>
+              </div>
+              <span style="font-size:10.5px;color:var(--faint,#a8a49b)">USD · +$1 by default</span>
+            </div>
+          </div>
+          <div style="font-size:12.5px;color:var(--fg,#1d1c19)">Recommit: <span style="font-weight:600">{{ lapse.previewLine }}</span> · <span style="font-family:'IBM Plex Mono',monospace">{{ lapse.stakePreviewFmt }}</span> at stake</div>
+        </div>
+        <sc-if value="{{ lapse.dry }}">
+          <div style="font-size:12.5px;color:var(--muted,#77746c);background:var(--surface2,#eceae4);border-radius:10px;padding:11px 13px;line-height:1.5">Dry run — no money moved. A real confirmation would charge {{ lapse.dryChargedFmt }} and recommit at {{ lapse.dryRecommitFmt }}.</div>
+        </sc-if>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="{{ lapse.onConfirm }}" style="flex:1;min-width:180px;min-height:48px;border-radius:10px;background:var(--missed,#a3573a);border:none;color:#fff;font-size:14px;font-weight:600">Charge {{ lapse.stakeFmt }} &amp; recommit</button>
+        </div>
+        <button onclick="{{ goDashboard }}" style="align-self:center;background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;min-height:40px">Never mind, I'm still clean</button>
+      </div>
+    </sc-if>
+
+    <!-- ── SETTINGS ──────────────────────────────────────── -->
+    <sc-if value="{{ isSettings }}">
+      <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← Back</button>
+      <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 20px;color:var(--fg,#1d1c19);letter-spacing:-.015em">Settings</h1>
+      <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:16px;border-bottom:1px solid var(--line,#e4e0d8)">
+          <span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint,#a8a49b)">Lifetime total charged</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:500;color:var(--fg,#1d1c19)">{{ totalChargedFmt }}</span>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">API base URL</span><input value="{{ sApiBase }}" oninput="{{ setSApiBase }}" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:13px;min-height:44px;font-family:'IBM Plex Mono',monospace"></label>
+        <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Charge recipient</span><input value="{{ sRecipient }}" oninput="{{ setSRecipient }}" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:44px"><span style="font-size:11.5px;color:var(--faint,#a8a49b);line-height:1.5">Beeminder is the default — fully swappable for any pledge recipient.</span></label>
+        <button onclick="{{ saveSettings }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Save</button>
+        <button onclick="{{ signOut }}" style="min-height:44px;border-radius:10px;background:transparent;border:1px solid var(--line,#e4e0d8);color:var(--muted,#77746c);font-size:13px">Sign out</button>
+      </div>
+    </sc-if>
+
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:920},&quot;cardVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;detailed&quot;,&quot;quiet&quot;],&quot;default&quot;:&quot;detailed&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Dashboard card&quot;},&quot;showSeconds&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Countdown&quot;},&quot;defaultDark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  // Sign-in is enforced server-side: /v1/auth/send-code emails a one-time
+  // code to the single address configured on the server (AUTH_EMAIL). No
+  // address, code, or token lives anywhere in this bundle.
+  EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+  state = {
+    loaded: false,
+    bootError: '',
+    now: Date.now(),
+    // ── auth gate ──
+    authed: (() => { try { return localStorage.getItem('samvara.authed') === '1'; } catch (e) { return false; } })(),
+    authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '',
+    reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '',
+    dark: !!this.props.defaultDark,
+    view: 'dashboard',
+    selectedId: null,
+    commitments: [],
+    settings: { apiBaseUrl: '', recipient: 'Beeminder', totalCharged: 0 },
+    // create form
+    cName: '', cDays: '1', cStake: '1', cError: '',
+    // decision form
+    decMode: 'advance', decDays: '', decStake: '', decError: '',
+    // lapse flow
+    lapseDry: null, lapseKind: 'slip', lapseDays: '', lapseStake: '',
+    // settings form
+    sApiBase: '', sRecipient: '',
+  };
+
+  async componentDidMount() {
+    this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
+    await this.api.init();
+    try {
+      await this.refresh();
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      // A dead session must land on the sign-in gate, and any other boot
+      // failure on a visible error - never an eternal 'Loading'.
+      if (msg.indexOf(' 401') !== -1) {
+        try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e2) {}
+        this.setState({ authed: false, authView: 'email' });
+      } else {
+        this.setState({ bootError: msg });
+      }
+      return;
+    }
+    this.setState({ loaded: true });
+    this._t = setInterval(() => { this.setState({ now: Date.now() }); this.checkAutoMiss(); }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  // Any commitment whose 24h grace window has elapsed with no response is
+  // auto-charged (assumed miss) and parked awaiting a recommit choice.
+  async checkAutoMiss() {
+    if (this._checking) return;
+    const now = Date.now();
+    const due = this.state.commitments.filter(cm => {
+      const r = cm.current_rung;
+      if (r.completed || r.awaiting_decision || r.awaiting_recommit || r.auto_missed) return false;
+      return now > Date.parse(r.due) + this.api.GRACE_MS;
+    });
+    if (!due.length) return;
+    this._checking = true;
+    try { for (const cm of due) await this.api.autoMiss(cm.id); await this.refresh(); }
+    finally { this._checking = false; }
+  }
+
+  async refresh() {
+    const commitments = await this.api.listCommitments();
+    const settings = await this.api.getSettings();
+    this.setState({ commitments, settings });
+  }
+
+  // ── theme ────────────────────────────────────────────────
+  lightVars() {
+    return { '--bg': '#f4f2ee', '--surface': '#fbfaf7', '--surface2': '#eceae4', '--fg': '#1d1c19', '--muted': '#77746c', '--faint': '#a8a49b', '--line': '#e4e0d8', '--accent': '#3d6b52', '--accent-fg': '#ffffff', '--success': '#3d6b52', '--lapse': '#9c7d33', '--missed': '#a3573a', '--shadow': 'rgba(35,32,26,.08)' };
+  }
+  darkVars() {
+    return { '--bg': '#161713', '--surface': '#1e201b', '--surface2': '#282a24', '--fg': '#eeece5', '--muted': '#918e84', '--faint': '#68665d', '--line': '#30322b', '--accent': '#63a37e', '--accent-fg': '#101410', '--success': '#63a37e', '--lapse': '#c3a35b', '--missed': '#cb7d5b', '--shadow': 'rgba(0,0,0,.45)' };
+  }
+
+  // ── formatting ───────────────────────────────────────────
+  money(n) { return '$' + Number(n || 0).toFixed(2); }
+  pad(n) { return String(n).padStart(2, '0'); }
+  countdown(targetMs) {
+    let diff = targetMs - this.state.now;
+    const over = diff < 0;
+    let a = Math.abs(diff);
+    const D = 864e5, H = 36e5, M = 6e4;
+    const d = Math.floor(a / D); a -= d * D;
+    const h = Math.floor(a / H); a -= h * H;
+    const m = Math.floor(a / M); a -= m * M;
+    const s = Math.floor(a / 1000);
+    return { over, d: String(d), h: this.pad(h), m: this.pad(m), s: this.pad(s) };
+  }
+
+  stateOf(cm) {
+    const r = cm.current_rung, now = this.state.now;
+    if (r.awaiting_recommit) return 'recommit';
+    if (r.awaiting_decision || r.completed) return 'awaiting';
+    const dueMs = Date.parse(r.due);
+    if (dueMs - now <= 0) return 'passed';
+    const startMs = Date.parse(r.start);
+    const last = cm.history[cm.history.length - 1];
+    const justReset = last && (last.outcome === 'lapse' || last.outcome === 'missed')
+      && (now - startMs) < 864e5;
+    return justReset ? 'reset' : 'active';
+  }
+
+  // ── view models ──────────────────────────────────────────
+  cardVM(cm) {
+    const r = cm.current_rung, now = this.state.now;
+    const startMs = Date.parse(r.start), dueMs = Date.parse(r.due);
+    const st = this.stateOf(cm);
+    const pct = Math.max(0, Math.min(100, (now - startMs) / (dueMs - startMs) * 100));
+    const suggested = this.api ? this.api.suggestNextRung(r.days) : r.days;
+    const graceMs = dueMs + (this.api ? this.api.GRACE_MS : 864e5);
+    const gracePct = Math.max(0, Math.min(100, (now - dueMs) / (graceMs - dueMs) * 100));
+    const chargedBase = r.charged_amount || r.stake;
+    const openDecision = () => {
+      const rr = cm.current_rung;
+      this.setState({ view: 'decision', selectedId: cm.id, decMode: 'advance', decDays: String(this.api.suggestNextRung(rr.days)), decStake: String(rr.stake), decError: '' });
+    };
+    const openRecommit = () => {
+      const rr = cm.current_rung;
+      this.setState({ view: 'decision', selectedId: cm.id, decMode: 'recommit', decDays: String(rr.days), decStake: String((rr.charged_amount || rr.stake) + 1), decError: '' });
+    };
+    return {
+      id: cm.id, name: cm.name,
+      stateLabel: { active: 'On a rung', passed: 'Awaiting confirmation', awaiting: 'Rung complete', reset: 'Fresh start', recommit: 'Auto-charged' }[st],
+      isRunning: st === 'active' || st === 'reset', isActive: st === 'active', isReset: st === 'reset',
+      isPassed: st === 'passed', isAwaiting: st === 'awaiting', isRecommit: st === 'recommit',
+      rungLabel: r.days + '-day rung', stakeFmt: this.money(r.stake),
+      baseFmt: cm.base_days + (cm.base_days === 1 ? ' day · ' : ' days · ') + this.money(cm.base_stake),
+      cd: st === 'passed' ? this.countdown(graceMs) : this.countdown(dueMs),
+      graceCd: this.countdown(graceMs), gracePct,
+      progressPct: st === 'passed' ? gracePct : pct,
+      completedLabel: r.days + '-day rung',
+      chargedFmt: this.money(chargedBase),
+      recommitDaysLabel: r.days + '-day', recommitStakeFmt: this.money(chargedBase + 1),
+      suggestedLabel: suggested + '-day', showSeconds: this.props.showSeconds !== false,
+      variantDetailed: (this.props.cardVariant || 'detailed') !== 'quiet',
+      variantQuiet: (this.props.cardVariant || 'detailed') === 'quiet',
+      onDetail: () => this.setState({ view: 'detail', selectedId: cm.id }),
+      onSlip: () => this.setState({ view: 'lapse', selectedId: cm.id, lapseDry: null, lapseKind: 'slip', lapseDays: String(cm.current_rung.days), lapseStake: String(cm.current_rung.stake + 1) }),
+      onMiss: () => this.setState({ view: 'lapse', selectedId: cm.id, lapseDry: null, lapseKind: 'miss', lapseDays: String(cm.current_rung.days), lapseStake: String(cm.current_rung.stake + 1) }),
+      onDecision: openDecision,
+      onRecommit: openRecommit,
+      onRecommitQuick: async () => {
+        const rr = cm.current_rung;
+        await this.api.chooseNextRung(cm.id, { days: rr.days, stake: (rr.charged_amount || rr.stake) + 1 });
+        await this.refresh();
+        this.setState({ view: 'dashboard' });
+      },
+      onConfirmClean: async () => {
+        await this.api.confirmClean(cm.id);
+        await this.refresh();
+        openDecision();
+      },
+      // ── "quick" main-button actions: apply the default with no extra screen ──
+      onConfirmCleanQuick: async () => {
+        await this.api.confirmClean(cm.id);
+        const c2 = await this.api.getCommitment(cm.id);
+        const rr = c2.current_rung;
+        await this.api.chooseNextRung(cm.id, { days: this.api.suggestNextRung(rr.days), stake: rr.stake });
+        await this.refresh();
+        this.setState({ view: 'dashboard' });
+      },
+      onDecisionQuick: async () => {
+        const rr = cm.current_rung;
+        await this.api.chooseNextRung(cm.id, { days: this.api.suggestNextRung(rr.days), stake: rr.stake });
+        await this.refresh();
+        this.setState({ view: 'dashboard' });
+      },
+      onSlipQuick: async () => { await this.api.reportSlip(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); },
+      onMissQuick: async () => { await this.api.reportMiss(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); },
+    };
+  }
+
+  detailVM(cm) {
+    const r = cm.current_rung;
+    const entries = cm.history.map(h => ({ ...h }));
+    const st0 = this.stateOf(cm);
+    if (!r.completed && st0 !== 'recommit') {
+      entries.push({ days: r.days, stake: r.stake, outcome: st0 === 'passed' ? 'pending' : 'active', current: true });
+    }
+    const maxDays = Math.max(1, ...entries.map(e => e.days));
+    const fill = { success: 'var(--success,#3d6b52)', lapse: 'var(--lapse,#9c7d33)', missed: 'var(--missed,#a3573a)' };
+    const timeline = entries.map((e, i) => {
+      let bg, border = '1px solid transparent';
+      if (e.outcome === 'active') { bg = 'color-mix(in srgb,var(--accent,#3d6b52) 22%,transparent)'; border = '2px solid var(--accent,#3d6b52)'; }
+      else if (e.outcome === 'pending') { bg = 'color-mix(in srgb,var(--missed,#a3573a) 16%,transparent)'; border = '2px dashed var(--missed,#a3573a)'; }
+      else bg = fill[e.outcome];
+      return {
+        key: i, dayLabel: e.days + 'd', current: !!e.current,
+        barStyle: { width: '26px', height: (16 + (e.days / maxDays) * 120) + 'px', background: bg, border, borderRadius: '6px' },
+      };
+    });
+    const bestClean = Math.max(0, ...cm.history.filter(h => h.outcome === 'success').map(h => h.days));
+    const totalChargedThis = cm.history.filter(h => h.outcome === 'lapse' || h.outcome === 'missed').reduce((a, h) => a + h.stake, 0);
+    const rows = cm.history.slice().reverse().map((h, i) => ({
+      key: i, daysLabel: h.days + '-day', settled: h.settled,
+      outcomeLabel: { success: 'Clean', lapse: 'Slipped', missed: 'Missed' }[h.outcome],
+      amount: this.money(h.stake), amountNote: h.outcome === 'success' ? 'held' : 'charged',
+      dotColor: fill[h.outcome],
+    }));
+    return {
+      ...this.cardVM(cm), timeline,
+      bestCleanLabel: bestClean > 0 ? bestClean + ' days' : '—',
+      currentRungDaysLabel: r.days + ' days',
+      totalChargedThisFmt: this.money(totalChargedThis),
+      hasHistory: rows.length > 0, historyRows: rows,
+    };
+  }
+
+  decisionVM(cm) {
+    const r = cm.current_rung, S = this.state;
+    const mode = S.decMode || 'advance';
+    const cd = v => Math.max(1, Math.round(Number(v)) || 1);
+    const cs = v => Math.max(1, Math.round(Number(v)) || 1);
+    return {
+      id: cm.id, name: cm.name, mode,
+      heading: mode === 'recommit' ? 'Recommit to your rung' : 'Choose your next rung',
+      lead: mode === 'recommit'
+        ? cm.name + ' — you were auto-charged ' + this.money(r.charged_amount || r.stake) + ' when the confirmation window closed. Recommit when you\u2019re ready — nothing restarts until you say so.'
+        : cm.name + ' — your ' + r.days + '-day rung came in clean. Decide, deliberately, how far to go next. Or stay where you are.',
+      confirmLabel: mode === 'recommit' ? 'Recommit to this rung' : 'Confirm this rung',
+      completedLabel: r.days + '-day rung', completedStakeFmt: this.money(r.stake),
+      daysValue: S.decDays, stakeValue: S.decStake,
+      previewLine: (S.decDays || '—') + '-day rung',
+      stakePreviewFmt: this.money(Number(S.decStake) || 0),
+      error: S.decError, hasError: !!S.decError,
+      daysPlus: () => this.setState(s => ({ decDays: String(cd(s.decDays) + 1) })),
+      daysMinus: () => this.setState(s => ({ decDays: String(Math.max(1, cd(s.decDays) - 1)) })),
+      stakePlus: () => this.setState(s => ({ decStake: String(cs(s.decStake) + 1) })),
+      stakeMinus: () => this.setState(s => ({ decStake: String(Math.max(1, cs(s.decStake) - 1)) })),
+    };
+  }
+
+  lapseVM(cm) {
+    const r = cm.current_rung, S = this.state, kind = S.lapseKind;
+    const cd = v => Math.max(1, Math.round(Number(v)) || 1);
+    const cs = v => Math.max(1, Math.round(Number(v)) || 1);
+    const dv = S.lapseDays, sv = S.lapseStake;
+    return {
+      id: cm.id, name: cm.name, kind,
+      title: kind === 'miss' ? 'Missed deadline' : 'Report a slip',
+      lead: kind === 'miss'
+        ? 'The deadline passed without a clean confirmation. Recording a miss charges the stake now — then recommit on your own terms below.'
+        : 'Recording a slip charges the stake now. Then recommit — same length by default, or adjust the rung and stake below.',
+      stakeFmt: this.money(r.stake),
+      recipient: S.settings.recipient,
+      daysValue: dv, stakeValue: sv,
+      previewLine: (dv || '—') + '-day rung',
+      stakePreviewFmt: this.money(Number(sv) || 0),
+      daysPlus: () => this.setState(s => ({ lapseDays: String(cd(s.lapseDays) + 1), lapseDry: null })),
+      daysMinus: () => this.setState(s => ({ lapseDays: String(Math.max(1, cd(s.lapseDays) - 1)), lapseDry: null })),
+      stakePlus: () => this.setState(s => ({ lapseStake: String(cs(s.lapseStake) + 1), lapseDry: null })),
+      stakeMinus: () => this.setState(s => ({ lapseStake: String(Math.max(1, cs(s.lapseStake) - 1)), lapseDry: null })),
+      setDays: e => this.setState({ lapseDays: e.target.value, lapseDry: null }),
+      setStake: e => this.setState({ lapseStake: e.target.value, lapseDry: null }),
+      dry: !!S.lapseDry, dryChargedFmt: S.lapseDry ? this.money(S.lapseDry.charged) : null,
+      dryRecommitFmt: (S.lapseDry && S.lapseDry.recommit) ? this.money(S.lapseDry.recommit.stake) : null,
+      onDry: async () => { const res = await this.api.reportSlip(cm.id, { dryRun: true, days: this.state.lapseDays, stake: this.state.lapseStake }); this.setState({ lapseDry: res }); },
+      onConfirm: async () => {
+        const d = this.state.lapseDays, st = this.state.lapseStake;
+        if (kind === 'miss') await this.api.reportMiss(cm.id, { days: d, stake: st }); else await this.api.reportSlip(cm.id, { days: d, stake: st });
+        await this.refresh();
+        this.setState({ view: 'dashboard', lapseDry: null });
+      },
+    };
+  }
+
+  // ── auth actions (server-side OTP — see backend /v1/auth/*) ─
+  authApiRoot() {
+    let base = '';
+    try { base = localStorage.getItem('samvara.apiBaseUrl') || ''; } catch (e) {}
+    base = base || (window.SAMVARA_CONFIG && window.SAMVARA_CONFIG.apiBaseUrl) || '';
+    return String(base).trim().replace(/\/+$/, '').replace(/\/v1$/, '');
+  }
+  async doSendCode() {
+    const em = this.state.authEmail.trim().toLowerCase();
+    if (!this.EMAIL_RE.test(em)) return this.setState({ authError: 'Enter a valid email address.' });
+    try {
+      const res = await fetch(this.authApiRoot() + '/v1/auth/send-code', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: em }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      return this.setState({ authError: 'Could not send the code. Try again in a minute.' });
+    }
+    this.setState({ authView: 'code', authCode: '', authError: '', authNotice: '' });
+  }
+  async doVerify() {
+    const S = this.state;
+    if (S.authCode.length !== 6) return this.setState({ authError: 'Enter the 6-digit code.' });
+    let token = '';
+    try {
+      const res = await fetch(this.authApiRoot() + '/v1/auth/verify-code', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: S.authEmail.trim().toLowerCase(), code: S.authCode }),
+      });
+      if (!res.ok) return this.setState({ authError: 'That code doesn\u2019t match. Check your email and try again.', authNotice: '' });
+      token = (await res.json()).token || '';
+    } catch (e) {
+      return this.setState({ authError: 'Could not reach the server. Try again.', authNotice: '' });
+    }
+    try {
+      localStorage.setItem('samvara.apiToken', token);
+      localStorage.setItem('samvara.authed', '1');
+    } catch (e) {}
+    // Reboot so the app loads data with the session token in place.
+    location.reload();
+  }
+  auth() {
+    const S = this.state;
+    return {
+      isEmail: S.authView === 'email', isCode: S.authView === 'code', isDenied: S.authView === 'denied',
+      isRequest: S.authView === 'request', isRequestDone: S.authView === 'requestDone',
+      email: S.authEmail, deniedEmail: S.authEmail.trim(),
+      codeInput: S.authCode,
+      error: S.authError, hasError: !!S.authError,
+      notice: S.authNotice, hasNotice: !!S.authNotice,
+      reqName: S.reqName, reqEmail: S.reqEmail, reqMsg: S.reqMsg,
+      reqError: S.reqError, hasReqError: !!S.reqError, reqEmailShown: S.reqSentTo,
+      setEmail: e => this.setState({ authEmail: e.target.value, authError: '' }),
+      onEmailKey: e => { if (e.key === 'Enter') this.doSendCode(); },
+      sendCode: () => this.doSendCode(),
+      setCode: e => this.setState({ authCode: e.target.value.replace(/\D/g, '').slice(0, 6), authError: '' }),
+      onCodeKey: e => { if (e.key === 'Enter') this.doVerify(); },
+      verify: () => this.doVerify(),
+      resend: async () => { this.setState({ authCode: '', authError: '', authNotice: '' }); await this.doSendCode(); if (!this.state.authError) this.setState({ authNotice: 'A new code has been sent to your email.' }); },
+      backToEmail: () => this.setState({ authView: 'email', authCode: '', authError: '', authNotice: '', reqError: '' }),
+      goRequest: () => this.setState({ authView: 'request', reqEmail: this.EMAIL_RE.test(S.authEmail.trim()) ? S.authEmail.trim() : '', reqError: '' }),
+      setReqName: e => this.setState({ reqName: e.target.value, reqError: '' }),
+      setReqEmail: e => this.setState({ reqEmail: e.target.value, reqError: '' }),
+      setReqMsg: e => this.setState({ reqMsg: e.target.value, reqError: '' }),
+      sendRequest: () => {
+        const s = this.state;
+        if (!s.reqName.trim()) return this.setState({ reqError: 'Please add your name.' });
+        if (!this.EMAIL_RE.test(s.reqEmail.trim())) return this.setState({ reqError: 'Enter a valid email so I can reply.' });
+        if (!s.reqMsg.trim()) return this.setState({ reqError: 'Add a short message.' });
+        // Static build: the request is acknowledged but not delivered anywhere.
+        this.setState({ authView: 'requestDone', reqSentTo: s.reqEmail.trim(), reqName: '', reqMsg: '' });
+      },
+    };
+  }
+
+  renderVals() {
+    const S = this.state;
+    const cards = S.commitments.map(cm => this.cardVM(cm));
+    const sel = S.commitments.find(c => c.id === S.selectedId);
+    const rootStyle = { ...(S.dark ? this.darkVars() : this.lightVars()), background: 'var(--bg)', color: 'var(--fg)', minHeight: '100vh', fontFamily: "'IBM Plex Sans',system-ui,sans-serif", colorScheme: S.dark ? 'dark' : 'light' };
+    return {
+      loaded: S.loaded, notLoaded: !S.loaded,
+      bootError: S.bootError, hasBootError: !!S.bootError, noBootError: !S.bootError,
+      reloadPage: () => location.reload(),
+      dark: S.dark, darkLabel: S.dark ? 'Light' : 'Dark', rootStyle,
+      showAuth: !S.authed, showApp: S.authed, auth: this.auth(),
+      signOut: () => { try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e) {} this.setState({ authed: false, authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '', view: 'dashboard' }); },
+      isDashboard: S.view === 'dashboard', isDetail: S.view === 'detail', isCreate: S.view === 'create',
+      isDecision: S.view === 'decision', isLapse: S.view === 'lapse', isSettings: S.view === 'settings',
+      hasCards: cards.length > 0, noCards: cards.length === 0, cards,
+      totalChargedFmt: this.money(S.settings.totalCharged), recipient: S.settings.recipient,
+      apiBaseShown: S.settings.apiBaseUrl,
+      detail: (S.view === 'detail' && sel) ? this.detailVM(sel) : null,
+      decision: (S.view === 'decision' && sel) ? this.decisionVM(sel) : null,
+      lapse: (S.view === 'lapse' && sel) ? this.lapseVM(sel) : null,
+      cName: S.cName, cDays: S.cDays, cStake: S.cStake, cError: S.cError, cHasError: !!S.cError,
+      cPreview: (S.cDays || '—') + '-day base rung · ' + this.money(Number(S.cStake) || 0) + ' at stake',
+      sApiBase: S.sApiBase, sRecipient: S.sRecipient,
+      // nav / handlers
+      toggleDark: () => this.setState(s => ({ dark: !s.dark })),
+      goDashboard: () => this.setState({ view: 'dashboard' }),
+      goCreate: () => this.setState({ view: 'create', cName: '', cDays: '1', cStake: '1', cError: '' }),
+      goSettings: () => this.setState({ view: 'settings', sApiBase: S.settings.apiBaseUrl, sRecipient: S.settings.recipient }),
+      setCName: e => this.setState({ cName: e.target.value }),
+      setCDays: e => this.setState({ cDays: e.target.value }),
+      setCStake: e => this.setState({ cStake: e.target.value }),
+      submitCreate: async () => {
+        const s = this.state; const d = Math.round(Number(s.cDays)); const st = Number(s.cStake);
+        if (!s.cName.trim()) return this.setState({ cError: 'Give your commitment a name.' });
+        if (!(d >= 1)) return this.setState({ cError: 'Base length must be at least 1 day.' });
+        if (!(st >= 1)) return this.setState({ cError: 'Stake must be at least $1.00.' });
+        await this.api.createCommitment({ name: s.cName, base_days: d, base_stake: st });
+        await this.refresh(); this.setState({ view: 'dashboard' });
+      },
+      setDecDays: e => this.setState({ decDays: e.target.value }),
+      setDecStake: e => this.setState({ decStake: e.target.value }),
+      confirmDecision: async () => {
+        const s = this.state; const d = Math.round(Number(s.decDays)); const st = Number(s.decStake);
+        if (!(d >= 1)) return this.setState({ decError: 'Next rung must be at least 1 day.' });
+        if (!(st >= 1)) return this.setState({ decError: 'Stake must be at least $1.00.' });
+        await this.api.chooseNextRung(s.selectedId, { days: d, stake: st });
+        await this.refresh(); this.setState({ view: 'dashboard' });
+      },
+      setSApiBase: e => this.setState({ sApiBase: e.target.value }),
+      setSRecipient: e => this.setState({ sRecipient: e.target.value }),
+      saveSettings: async () => {
+        const s = this.state;
+        await this.api.updateSettings({ apiBaseUrl: s.sApiBase, recipient: s.sRecipient });
+        await this.refresh(); this.setState({ view: 'dashboard' });
+      },
+    };
+  }
+}
+</script>
+
+
+</body></html>

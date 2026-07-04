@@ -22,7 +22,11 @@ OUT="$ROOT/dist"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-# 1. Transform the bundle → dist/index.html
+# 1. Recompose the bundle from the unpacked source (frontend/src/ is the
+#    editable source of truth; frontend/index.html is generated, git-ignored).
+python3 "$ROOT/scripts/pack_bundle.py" "$SRC/src" "$SRC/index.html"
+
+# 2. Transform the bundle → dist/index.html
 python3 "$ROOT/scripts/transform_bundle.py" "$SRC/index.html" "$OUT/index.html"
 
 # 2. Real API client + favicon

@@ -1331,7 +1331,9 @@ class Component extends DCLogic {
     const series = M.series || {};
     const today = M.today;
     // The ratio denominator starts on the first day ANY metric saw data.
-    const allDays = Object.values(series).flatMap(s => Object.keys(s)).sort();
+    // Count>0 only: a +1 undone back to 0 was a misclick, not tracking.
+    const allDays = Object.values(series)
+      .flatMap(s => Object.keys(s).filter(d => s[d] > 0)).sort();
     const start = allDays.length ? allDays[0] : null;
     // Ratios use the FULL range since tracking began; graphs cap at the last
     // 180 days so the bars stay readable.
@@ -1493,7 +1495,13 @@ class Component extends DCLogic {
       reloadPage: () => location.reload(),
       dark: S.dark, darkLabel: S.dark ? 'Light' : 'Dark', rootStyle,
       showAuth: !S.authed, showApp: S.authed, auth: this.auth(),
-      signOut: () => { try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e) {} this.setState({ authed: false, authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '', view: 'dashboard' }); },
+      signOut: () => {
+        // Best-effort server-side revocation FIRST (it needs the token, which
+        // req() reads from localStorage), then drop the local copies.
+        try { this.api.signOut().catch(() => {}); } catch (e) {}
+        try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e) {}
+        this.setState({ authed: false, authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '', view: 'dashboard' });
+      },
       isDashboard: S.view === 'dashboard', isDetail: S.view === 'detail', isCreate: S.view === 'create',
       isDecision: S.view === 'decision', isLapse: S.view === 'lapse', isSettings: S.view === 'settings',
       isData: S.view === 'data',

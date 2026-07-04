@@ -119,6 +119,23 @@ def test_health_redacts_config_without_token():
     assert full["status"] == "ok" and "beeminder_dryrun" in full
 
 
+def test_sign_out_revokes_the_session_server_side():
+    token = login()
+    hdr = {"Authorization": f"Bearer {token}"}
+    assert client.get("/v1/commitments", headers=hdr).status_code == 200
+    assert client.post("/v1/auth/sign-out", headers=hdr).status_code == 204
+    # The token is dead in the database, not just forgotten by the browser.
+    assert client.get("/v1/commitments", headers=hdr).status_code == 401
+    # Repeats and garbage are harmless no-ops.
+    assert client.post("/v1/auth/sign-out", headers=hdr).status_code == 204
+    assert client.post("/v1/auth/sign-out").status_code == 204
+    # Signing out a session never kills the static cron token.
+    assert client.post("/v1/auth/sign-out",
+                       headers={"Authorization": "Bearer static-cron-token"}).status_code == 204
+    assert client.get("/v1/commitments",
+                      headers={"Authorization": "Bearer static-cron-token"}).status_code == 200
+
+
 def test_settings_patch_cannot_touch_total_charged():
     before = client.get("/v1/settings",
                         headers={"Authorization": "Bearer static-cron-token"}).json()

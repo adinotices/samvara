@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import sqlite3
 import time
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -48,9 +49,17 @@ log = logging.getLogger("samvara")
 
 app = FastAPI(title="Samvara API", version="1.0.0")
 
+_origins = settings.allowed_origins
+if not _origins:
+    if settings.auth_mode == "none":
+        _origins = ["*"]  # local dev: no auth, no fixed frontend origin
+    else:
+        log.warning("ALLOWED_ORIGINS is not set — browsers will be blocked by "
+                    "CORS. Set it to your frontend origin(s).")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,6 +124,21 @@ async def verify_code(body: VerifyCodeBody) -> dict[str, str]:
     return {"token": auth.create_session(email)}
 
 
+@app.post("/v1/auth/sign-out", status_code=204, response_class=Response)
+async def sign_out(authorization: str | None = Header(default=None)):
+    """Revoke the presented session token server-side.
+
+    Without this, signing out only clears the browser's copy while the 30-day
+    session stays valid in the database. No auth dependency: revoking an
+    unknown or expired token is a harmless no-op, and always answering 204
+    means the endpoint can't be used to probe which tokens exist.
+    """
+    if authorization:
+        scheme, _, token_value = authorization.partition(" ")
+        if scheme.lower() == "bearer" and token_value:
+            store.delete_session(auth.sha256(token_value))
+
+
 # ── health (no auth — lets a load balancer / cron probe cheaply) ──────────────
 @app.get("/v1/health")
 async def health(authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -152,10 +176,17 @@ async def get_settings() -> dict[str, Any]:
 # ── writes that never charge ─────────────────────────────────────────────────
 @app.post("/v1/commitments", dependencies=[Depends(require_auth)])
 async def create_commitment(body: CreateBody) -> dict[str, Any]:
-    cm = ratchet.new_commitment(body.name, body.base_days, body.base_stake)
-    with store.lock:
-        store.insert_commitment(cm)
-    return cm
+    # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
+    for _ in range(3):
+        cm = ratchet.new_commitment(body.name, body.base_days, body.base_stake)
+        try:
+            with store.lock:
+                store.insert_commitment(cm)
+            return cm
+        except sqlite3.IntegrityError:
+            continue
+    raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        "Could not allocate a commitment id.")
 
 
 @app.post("/v1/commitments/{cid}/confirm-clean", dependencies=[Depends(require_auth)])
@@ -243,7 +274,12 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
             store.add_total_charged(charged)
             store.update_commitment(cm)
-        _recent_lapse[cid] = time.monotonic()
+        now_mono = time.monotonic()
+        _recent_lapse[cid] = now_mono
+        # Prune entries past the window so the dict can't grow forever.
+        cutoff = now_mono - settings.lapse_debounce_s
+        for k in [k for k, v in _recent_lapse.items() if v < cutoff]:
+            del _recent_lapse[k]
 
     result["commitment"] = cm
     result["charge"] = charge.as_dict()

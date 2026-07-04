@@ -216,6 +216,10 @@ class Store:
                 (token_hash, email, expires_at),
             )
 
+    def delete_session(self, token_hash: str) -> None:
+        with self.lock, self._conn:
+            self._conn.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+
     def get_session(self, token_hash: str) -> dict[str, Any] | None:
         now = int(time.time() * 1000)
         with self.lock:

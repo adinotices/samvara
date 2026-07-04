@@ -12,8 +12,14 @@ COPY app ./app
 
 # SQLite lives here; mount a volume at /data in production so it survives
 # restarts and redeploys (see deploy/ compose + fly configs).
+# NOTE: the mounted volume must be writable by uid 1000 — chown it once from a
+# root shell if the volume predates the non-root switch.
 ENV SAMVARA_DB=/data/samvara.db
 VOLUME ["/data"]
+
+RUN useradd --uid 1000 --no-create-home samvara && \
+    mkdir -p /data && chown samvara:samvara /data
+USER samvara
 
 EXPOSE 8000
 

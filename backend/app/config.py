@@ -38,8 +38,10 @@ class Settings:
     # ── CORS ─────────────────────────────────────────────────────────────
     # The exact origin(s) your frontend is served from, e.g.
     #   https://samvara.app , https://<user>.github.io
+    # Unset: wide open in AUTH_MODE=none (local dev), browsers blocked
+    # otherwise — a forgotten var should fail loudly, not fall open.
     allowed_origins: list[str] = field(
-        default_factory=lambda: _list("ALLOWED_ORIGINS", ["*"])
+        default_factory=lambda: _list("ALLOWED_ORIGINS", [])
     )
 
     # ── Beeminder ────────────────────────────────────────────────────────

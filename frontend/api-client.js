@@ -117,6 +117,12 @@ export async function autoMiss(id) {
   return req('POST', '/commitments/' + encodeURIComponent(id) + '/auto-miss');
 }
 
+// Revoke the current session token server-side (sign-out). Must run BEFORE
+// the token is dropped from localStorage — it authenticates with it.
+export async function signOut() {
+  return req('POST', '/auth/sign-out');
+}
+
 // ── daily metrics (the Data tab) ─────────────────────────────────────────────
 // The server owns the vocabulary (which metrics exist) and the calendar (which
 // local day a tap lands on — METRICS_TZ, America/New_York by default).

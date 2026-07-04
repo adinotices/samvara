@@ -95,6 +95,18 @@ def test_metrics_require_auth():
                        json={"delta": 1}).status_code == 401
 
 
+def test_create_survives_an_id_collision(monkeypatch):
+    from app import ratchet
+    taken = mk("First", days=3)
+    real_new_id = ratchet.new_id
+    ids = iter([taken, real_new_id()])  # collide once, then a fresh id
+    monkeypatch.setattr(ratchet, "new_id", lambda: next(ids))
+    r = client.post("/v1/commitments", headers=HDR,
+                    json={"name": "Second", "base_days": 1, "base_stake": 5.0})
+    assert r.status_code == 200
+    assert r.json()["id"] != taken
+
+
 def test_commitments_listed_closest_deadline_first():
     # Created in the opposite order to their deadlines, so insertion order
     # (the old behavior) would fail this.

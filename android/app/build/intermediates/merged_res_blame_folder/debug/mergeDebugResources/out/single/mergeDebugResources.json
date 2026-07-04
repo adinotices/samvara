@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "app.samvara.shell.app-debug-4:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "app.samvara.shell.app-main-6:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "app.samvara.shell.app-debug-4:/drawable_ic_bars.xml.flat",
+        "source": "app.samvara.shell.app-main-6:/drawable/ic_bars.xml"
+    }
+]

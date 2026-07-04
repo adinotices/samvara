@@ -1,0 +1,36 @@
+{
+    "logs": [
+        {
+            "outputFile": "app.samvara.shell.app-mergeDebugResources-2:/values/values.xml",
+            "map": [
+                {
+                    "source": "/home/admin/repos/samvara/android/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "44",
+                        "endOffsets": "95"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "103",
+                        "endColumns": "44",
+                        "endOffsets": "143"
+                    }
+                },
+                {
+                    "source": "/home/admin/repos/samvara/android/app/src/main/res/values/colors.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "47",
+                        "endOffsets": "98"
+                    }
+                }
+            ]
+        }
+    ]
+}

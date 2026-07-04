@@ -1,0 +1,7 @@
+#Fri Jul 03 22:42:56 EDT 2026
+base.1=/home/admin/repos/samvara/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/13/classes.dex
+path.1=13/classes.dex
+base.0=/home/admin/repos/samvara/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+renamed.1=classes2.dex
+renamed.0=classes.dex
+path.0=0/classes.dex

@@ -1,0 +1,7 @@
+app.samvara.shell.app-pngs-0 /home/admin/repos/samvara/android/app/build/generated/res/pngs/debug
+app.samvara.shell.app-resValues-1 /home/admin/repos/samvara/android/app/build/generated/res/resValues/debug
+app.samvara.shell.app-packageDebugResources-2 /home/admin/repos/samvara/android/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+app.samvara.shell.app-packageDebugResources-3 /home/admin/repos/samvara/android/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+app.samvara.shell.app-debug-4 /home/admin/repos/samvara/android/app/build/intermediates/merged_res/debug/mergeDebugResources
+app.samvara.shell.app-debug-5 /home/admin/repos/samvara/android/app/src/debug/res
+app.samvara.shell.app-main-6 /home/admin/repos/samvara/android/app/src/main/res

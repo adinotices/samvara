@@ -1,0 +1,6 @@
+R_DEF: Internal format may change without notice
+local
+color samvara_green
+drawable ic_bars
+mipmap ic_launcher
+string app_name

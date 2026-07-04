@@ -1,0 +1,24 @@
+// Samvara shell — a WebView around https://samvara.app plus a native
+// deadline-notification poller. Zero library dependencies on purpose: the
+// only artifact Gradle needs is the Android Gradle Plugin itself, so the
+// build works fully offline from a warm cache.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id 'com.android.application' version '8.9.0'
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'samvara-shell'
+include ':app'

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The three ascending bars from the site's favicon, inset into the
+     adaptive-icon safe zone (content within the middle ~66/108 of the canvas). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <group android:translateX="12" android:translateY="12">
+        <path android:fillColor="#ffffff"
+            android:pathData="M4.9,13 h0.8 a1.4,1.4 0 0 1 1.4,1.4 v4.2 a1.4,1.4 0 0 1 -1.4,1.4 h-0.8 a1.4,1.4 0 0 1 -1.4,-1.4 v-4.2 a1.4,1.4 0 0 1 1.4,-1.4 z" />
+        <path android:fillColor="#ffffff"
+            android:pathData="M11.6,9 h0.8 a1.4,1.4 0 0 1 1.4,1.4 v8.2 a1.4,1.4 0 0 1 -1.4,1.4 h-0.8 a1.4,1.4 0 0 1 -1.4,-1.4 v-8.2 a1.4,1.4 0 0 1 1.4,-1.4 z" />
+        <path android:fillColor="#ffffff"
+            android:pathData="M18.3,4.5 h0.8 a1.4,1.4 0 0 1 1.4,1.4 v12.7 a1.4,1.4 0 0 1 -1.4,1.4 h-0.8 a1.4,1.4 0 0 1 -1.4,-1.4 v-12.7 a1.4,1.4 0 0 1 1.4,-1.4 z" />
+    </group>
+</vector>

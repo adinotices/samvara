@@ -1,0 +1,4 @@
+app.samvara.shell:mipmap/ic_launcher = 0x7f030000
+app.samvara.shell:drawable/ic_bars = 0x7f020000
+app.samvara.shell:string/app_name = 0x7f040000
+app.samvara.shell:color/samvara_green = 0x7f010000

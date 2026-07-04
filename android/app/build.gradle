@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.samvara.shell'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'app.samvara.shell'
+        minSdk 26          // adaptive icons + java.time + notification channels
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+// No dependencies block: framework APIs only (WebView, JobScheduler,
+// NotificationManager, HttpURLConnection, org.json). See settings.gradle.

@@ -35,14 +35,24 @@ logic, charges money, and persists state.
 
 The frontend was built against a mock `api-client.js` that defined the entire
 API contract. The real client here is a **drop-in** for that mock — same
-exports, same shapes. Two things differ from the raw export: the build strips
-the bundled mock client so the page loads the real one (see
-[The frontend transform](#the-frontend-transform)), and the app's sign-in gate
-— a demo that generated its code in the browser and displayed it on screen —
-has been rewired in `frontend/index.html` to the server's OTP endpoints (see
-[Sign-in](#sign-in)). If you ever re-export a fresh bundle, that rewiring must
-be reapplied; the build guard will refuse to ship a bundle that still carries
-the mock gate.
+exports, same shapes. The build strips the bundled mock client so the page
+loads the real one (see [The frontend transform](#the-frontend-transform)),
+and `frontend/index.html` carries a few source-level edits over the raw
+export:
+
+- the sign-in gate — originally a demo that generated its code in the browser
+  and displayed it on screen — is rewired to the server's OTP endpoints (see
+  [Sign-in](#sign-in));
+- the boot line `import('./api-client.js')` resolves via
+  `new URL(..., location.href)` — a relative module specifier cannot resolve
+  from the bundle's document-swap context, which left the app stuck on
+  "Loading…" forever (the mock never hit this path, so the raw export ships
+  broken here);
+- a dashboard empty state, a `<title>`, and a favicon link.
+
+If you ever re-export a fresh bundle, those edits must be reapplied; the build
+guard refuses to ship a bundle that still carries the mock gate or a personal
+address.
 
 Why split this way: GitHub Pages is static and can't safely hold a Beeminder
 token or charge money, so anything involving the token or money lives in the

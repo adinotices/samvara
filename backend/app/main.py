@@ -20,9 +20,11 @@ reshaping.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import auth, beeminder, ratchet
 from .config import settings
 from .security import (
+    BumpBody,
     ChooseNextBody,
     CreateBody,
     LapseBody,
@@ -284,6 +287,49 @@ async def auto_miss(cid: str) -> dict[str, Any]:
             store.update_commitment(cm)
     cm["_charge"] = charge.as_dict()
     return cm
+
+
+# ── daily metrics (the Data tab) ─────────────────────────────────────────────
+# Fixed vocabulary: the tracked metrics, in display order. `ratio: True` marks
+# the ones whose days-with-data ratio the Ratios subtab shows. The frontend
+# renders whatever this returns, so adding a metric here is the whole change.
+METRICS: list[dict[str, Any]] = [
+    {"key": "porn_viewed", "label": "Porn viewed", "ratio": True},
+    {"key": "sexual_content_viewed", "label": "Non-porn sexual content viewed", "ratio": True},
+    {"key": "masturbation", "label": "Masturbations", "ratio": True},
+    {"key": "gaze_goal_set", "label": "Goal set: not looking at women with sexual desire", "ratio": False},
+    {"key": "gaze_goal_broken", "label": "That goal broken", "ratio": False},
+]
+_METRIC_KEYS = {m["key"] for m in METRICS}
+
+
+def metrics_today(now: dt.datetime | None = None) -> str:
+    """The current calendar day (YYYY-MM-DD) in the configured metrics tz."""
+    at = now if now is not None else dt.datetime.now(dt.timezone.utc)
+    return at.astimezone(ZoneInfo(settings.metrics_tz)).date().isoformat()
+
+
+def _metrics_payload() -> dict[str, Any]:
+    return {
+        "metrics": METRICS,
+        "series": store.metric_series(),
+        "today": metrics_today(),
+    }
+
+
+@app.get("/v1/metrics", dependencies=[Depends(require_auth)])
+async def get_metrics() -> dict[str, Any]:
+    return _metrics_payload()
+
+
+@app.post("/v1/metrics/{key}/bump", dependencies=[Depends(require_auth)])
+async def bump_metric(key: str, body: BumpBody) -> dict[str, Any]:
+    if key not in _METRIC_KEYS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No metric {key!r}.")
+    if body.delta not in (1, -1):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "delta must be 1 or -1.")
+    store.bump_metric(key, metrics_today(), body.delta)
+    return _metrics_payload()
 
 
 # ── scheduled sweep (cron / GitHub Actions call this) ────────────────────────

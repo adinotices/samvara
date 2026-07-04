@@ -63,6 +63,16 @@ class Store:
                        expires_at INTEGER NOT NULL
                    )"""
             )
+            # Daily tally per tracked metric (the Data tab). One row per
+            # metric per local day; day is YYYY-MM-DD in the configured tz.
+            self._conn.execute(
+                """CREATE TABLE IF NOT EXISTS metric_days (
+                       metric TEXT NOT NULL,
+                       day    TEXT NOT NULL,
+                       count  INTEGER NOT NULL DEFAULT 0,
+                       PRIMARY KEY (metric, day)
+                   )"""
+            )
             row = self._conn.execute("SELECT v FROM kv WHERE k='settings'").fetchone()
             if row is None:
                 self._conn.execute(
@@ -124,6 +134,35 @@ class Store:
             self._conn.execute(
                 "UPDATE kv SET v=? WHERE k='settings'", (json.dumps(cur),)
             )
+
+    # ── daily metric tallies (the Data tab) ──────────────────────────────
+    def bump_metric(self, metric: str, day: str, delta: int) -> int:
+        """Add `delta` to a metric's tally for `day`, floored at 0.
+
+        Returns the new count. The floor means a stray −1 on an empty day
+        stays 0 rather than going negative."""
+        with self.lock, self._conn:
+            row = self._conn.execute(
+                "SELECT count FROM metric_days WHERE metric=? AND day=?",
+                (metric, day),
+            ).fetchone()
+            new = max(0, (row[0] if row else 0) + delta)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO metric_days (metric, day, count) VALUES (?, ?, ?)",
+                (metric, day, new),
+            )
+        return new
+
+    def metric_series(self) -> dict[str, dict[str, int]]:
+        """{metric: {day: count}} for every recorded day (zeros included)."""
+        with self.lock:
+            rows = self._conn.execute(
+                "SELECT metric, day, count FROM metric_days ORDER BY day ASC"
+            ).fetchall()
+        out: dict[str, dict[str, int]] = {}
+        for metric, day, count in rows:
+            out.setdefault(metric, {})[day] = count
+        return out
 
     # ── OTP codes (hashed; one active code per email) ─────────────────────
     def last_otp_created(self, email: str) -> int | None:

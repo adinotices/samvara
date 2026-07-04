@@ -67,6 +67,11 @@ class Settings:
     # From address shown in the login email. Must be a verified Resend domain.
     email_from: str = os.environ.get("EMAIL_FROM", "Samvara <noreply@samvara.app>")
 
+    # ── daily metrics (the Data tab) ─────────────────────────────────────
+    # Which local calendar day a tap lands on. The server's clock rules so a
+    # traveling phone can't split one evening across two days.
+    metrics_tz: str = os.environ.get("METRICS_TZ", "America/New_York")
+
     # ── ratchet timing ───────────────────────────────────────────────────
     # Grace window after a deadline before an unanswered rung auto-charges.
     # Keep in sync with GRACE_MS in frontend/api-client.js (24h there).

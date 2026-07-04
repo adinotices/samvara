@@ -117,6 +117,14 @@ export async function autoMiss(id) {
   return req('POST', '/commitments/' + encodeURIComponent(id) + '/auto-miss');
 }
 
+// ── daily metrics (the Data tab) ─────────────────────────────────────────────
+// The server owns the vocabulary (which metrics exist) and the calendar (which
+// local day a tap lands on — METRICS_TZ, America/New_York by default).
+export async function getMetrics() { return req('GET', '/metrics'); }
+export async function bumpMetric(key, delta) {
+  return req('POST', '/metrics/' + encodeURIComponent(key) + '/bump', { delta });
+}
+
 // The Settings screen edits apiBaseUrl. Persist it as a LOCAL override so this
 // client immediately re-points at the new server (the base URL can't be fetched
 // from a server you're trying to change). Other fields are patched server-side.

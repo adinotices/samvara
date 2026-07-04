@@ -232,6 +232,8 @@ session token from the OTP flow (what the browser uses) or the static
 | POST | `/v1/tick` | Sweep all commitments past grace; charge + park each. |
 | GET | `/v1/settings` | `{apiBaseUrl, recipient, totalCharged}`. |
 | PATCH | `/v1/settings` | Merge a settings patch. |
+| GET | `/v1/metrics` | Data-tab tallies: metric vocabulary, per-day series, today's date. |
+| POST | `/v1/metrics/{key}/bump` | `{delta: 1\|-1}` on today's tally (floored at 0). The server's calendar (`METRICS_TZ`, default America/New_York) decides what "today" is. |
 
 The ratchet rules, verbatim: a clean success advances the rung by **+1 day** and
 holds the stake; a slip/miss holds the length and raises the stake by **+$1** by

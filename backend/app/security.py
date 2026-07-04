@@ -70,6 +70,11 @@ class LapseBody(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class BumpBody(BaseModel):
+    # +1 / -1 on a daily metric tally; anything else is rejected in the route.
+    delta: int
+
+
 class SettingsPatch(BaseModel):
     # totalCharged is deliberately absent: the charge ledger is written only by
     # the charging paths, never by a client patch.

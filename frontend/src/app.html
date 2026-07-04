@@ -502,6 +502,14 @@
 
   <div style="max-width:640px;margin:0 auto;padding:20px 16px 96px">
 
+    <!-- ── tab bar: Goals | Data ─────────────────────────── -->
+    <sc-if value="{{ loaded }}">
+      <div style="display:flex;gap:4px;background:var(--surface2,#eceae4);border-radius:12px;padding:4px;margin-bottom:20px">
+        <button onclick="{{ goGoals }}" style="{{ goalsTabStyle }}">Goals</button>
+        <button onclick="{{ goData }}" style="{{ dataTabStyle }}">Data</button>
+      </div>
+    </sc-if>
+
     <sc-if value="{{ notLoaded }}" hint-placeholder-val="{{ true }}">
       <sc-if value="{{ noBootError }}" hint-placeholder-val="{{ true }}">
         <div style="text-align:center;color:var(--muted,#77746c);padding:70px 0;font-size:14px">Loading…</div>
@@ -662,6 +670,97 @@
         </sc-if>
       </div>
      </sc-if>
+    </sc-if>
+
+    <!-- ── DATA ──────────────────────────────────────────── -->
+    <sc-if value="{{ isData }}">
+      <h1 style="font-family:'Newsreader',serif;font-size:27px;font-weight:600;margin:2px 0 4px;color:var(--fg,#1d1c19);letter-spacing:-.015em">Data</h1>
+      <p style="margin:0 0 16px;color:var(--muted,#77746c);font-size:13.5px;line-height:1.5">Daily tallies. Each tap lands on today in New York time — {{ data.todayLabel }}.</p>
+
+      <div style="display:flex;gap:4px;background:var(--surface2,#eceae4);border-radius:10px;padding:3px;margin-bottom:18px">
+        <button onclick="{{ data.goTrack }}" style="{{ data.trackTabStyle }}">Track</button>
+        <button onclick="{{ data.goGraphs }}" style="{{ data.graphsTabStyle }}">Graphs</button>
+        <button onclick="{{ data.goRatios }}" style="{{ data.ratiosTabStyle }}">Ratios</button>
+      </div>
+
+      <sc-if value="{{ data.loading }}">
+        <div style="text-align:center;color:var(--muted,#77746c);padding:50px 0;font-size:14px">Loading…</div>
+      </sc-if>
+      <sc-if value="{{ data.hasError }}">
+        <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:24px 18px;text-align:center;color:var(--missed,#a3573a);font-size:13.5px;line-height:1.6;margin-bottom:16px">{{ data.error }}</div>
+      </sc-if>
+
+      <!-- Track: one row per metric with −/+1 -->
+      <sc-if value="{{ data.isTrack }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ data.rows }}" as="row" hint-placeholder-count="5">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="min-width:0">
+                <div style="font-size:14.5px;color:var(--fg,#1d1c19);line-height:1.35">{{ row.label }}</div>
+                <div style="font-size:12px;color:var(--muted,#77746c);margin-top:3px">Today: <span style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--fg,#1d1c19)">{{ row.todayCount }}</span></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex:none">
+                <button onclick="{{ row.onMinus }}" title="Undo an accidental tap" style="min-height:44px;width:44px;padding:0;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--muted,#77746c);font-size:19px;line-height:1">−</button>
+                <button onclick="{{ row.onPlus }}" style="min-height:44px;padding:0 18px;border-radius:10px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14.5px;font-weight:600">+1</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- Graphs: daily bars + trailing 7-day average dots -->
+      <sc-if value="{{ data.isGraphs }}">
+        <sc-if value="{{ data.noData }}">
+          <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">No data yet — record something on the <strong style="color:var(--fg,#1d1c19);font-weight:600">Track</strong> subtab and the graphs appear here.</div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <sc-for list="{{ data.graphs }}" as="g">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:16px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px">
+                <div style="font-size:14px;color:var(--fg,#1d1c19);line-height:1.35">{{ g.label }}</div>
+                <div style="flex:none;font-size:11.5px;color:var(--muted,#77746c)">total <span style="font-family:'IBM Plex Mono',monospace;color:var(--fg,#1d1c19)">{{ g.total }}</span> · peak <span style="font-family:'IBM Plex Mono',monospace;color:var(--fg,#1d1c19)">{{ g.max }}</span>/day</div>
+              </div>
+              <div style="position:relative;height:96px;border-bottom:1px solid var(--line,#e4e0d8)">
+                <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:1px">
+                  <sc-for list="{{ g.bars }}" as="b">
+                    <div style="{{ b.style }}"></div>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ g.dots }}" as="d">
+                  <div style="{{ d.style }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint,#a8a49b);margin-top:6px;font-family:'IBM Plex Mono',monospace">
+                <span>{{ g.startLabel }}</span><span>{{ g.endLabel }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ data.hasData }}">
+          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Bars are daily counts; the dots trace the trailing 7-day average.</p>
+        </sc-if>
+      </sc-if>
+
+      <!-- Ratios: share of tracked days with any occurrence -->
+      <sc-if value="{{ data.isRatios }}">
+        <sc-if value="{{ data.noData }}">
+          <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">No data yet — ratios start once something has been recorded on the <strong style="color:var(--fg,#1d1c19);font-weight:600">Track</strong> subtab.</div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ data.ratios }}" as="r">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="min-width:0">
+                <div style="font-size:14.5px;color:var(--fg,#1d1c19);line-height:1.35">{{ r.label }}</div>
+                <div style="font-size:12px;color:var(--muted,#77746c);margin-top:3px">{{ r.daysLabel }}</div>
+              </div>
+              <div style="flex:none;font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:500;color:var(--fg,#1d1c19)">{{ r.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ data.hasData }}">
+          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Share of days with at least one occurrence, counted from the first day anything was tracked ({{ data.startLabel }}) through today.</p>
+        </sc-if>
+      </sc-if>
     </sc-if>
 
     <!-- ── DETAIL ────────────────────────────────────────── -->
@@ -913,6 +1012,8 @@ class Component extends DCLogic {
     lapseDry: null, lapseKind: 'slip', lapseDays: '', lapseStake: '',
     // settings form
     sApiBase: '', sRecipient: '',
+    // data tab (daily metric tallies)
+    dataTab: 'track', metrics: null, metricsError: '',
   };
 
   async componentDidMount() {
@@ -1159,6 +1260,132 @@ class Component extends DCLogic {
     };
   }
 
+  // ── data tab (daily metric tallies; the server owns the calendar) ─
+  async loadMetrics() {
+    try {
+      const metrics = await this.api.getMetrics();
+      this.setState({ metrics, metricsError: '' });
+    } catch (e) {
+      this.setState({ metricsError: String((e && e.message) || e) });
+    }
+  }
+
+  async bump(key, delta) {
+    if (this._bumping) return;  // one tap at a time; a queued double-tap double-counts
+    this._bumping = true;
+    try {
+      const metrics = await this.api.bumpMetric(key, delta);
+      this.setState({ metrics, metricsError: '' });
+    } catch (e) {
+      this.setState({ metricsError: String((e && e.message) || e) });
+    } finally {
+      this._bumping = false;
+    }
+  }
+
+  // Inclusive YYYY-MM-DD range. Pure UTC arithmetic on the labels, so a DST
+  // shift in the display tz can't skip or repeat a day here.
+  dayRange(first, last) {
+    const out = [];
+    let t = Date.parse(first + 'T00:00:00Z');
+    const end = Date.parse(last + 'T00:00:00Z');
+    while (t <= end && out.length < 3660) {
+      out.push(new Date(t).toISOString().slice(0, 10));
+      t += 864e5;
+    }
+    return out;
+  }
+
+  dataVM() {
+    const S = this.state, M = S.metrics;
+    const sub = S.dataTab;
+    const subStyle = active => ({
+      flex: '1', minHeight: '40px', border: 'none', borderRadius: '8px',
+      fontSize: '13px', fontWeight: active ? '600' : '400',
+      background: active ? 'var(--surface,#fbfaf7)' : 'transparent',
+      color: active ? 'var(--fg,#1d1c19)' : 'var(--muted,#77746c)',
+      boxShadow: active ? '0 1px 2px var(--shadow,rgba(35,32,26,.08))' : 'none',
+    });
+    const vm = {
+      loading: !M && !S.metricsError,
+      hasError: !!S.metricsError, error: S.metricsError,
+      isTrack: sub === 'track', isGraphs: sub === 'graphs', isRatios: sub === 'ratios',
+      trackTabStyle: subStyle(sub === 'track'),
+      graphsTabStyle: subStyle(sub === 'graphs'),
+      ratiosTabStyle: subStyle(sub === 'ratios'),
+      goTrack: () => this.setState({ dataTab: 'track' }),
+      goGraphs: () => this.setState({ dataTab: 'graphs' }),
+      goRatios: () => this.setState({ dataTab: 'ratios' }),
+      todayLabel: M ? M.today : '…',
+      rows: [], graphs: [], ratios: [], noData: false, hasData: false, startLabel: '',
+    };
+    if (!M) return vm;
+
+    const series = M.series || {};
+    const today = M.today;
+    // The ratio denominator starts on the first day ANY metric saw data.
+    const allDays = Object.values(series).flatMap(s => Object.keys(s)).sort();
+    const start = allDays.length ? allDays[0] : null;
+    const days = start ? this.dayRange(start, today).slice(-180) : [];
+    vm.noData = !start;
+    vm.hasData = !!start;
+    vm.startLabel = start || '';
+
+    vm.rows = M.metrics.map(m => ({
+      key: m.key, label: m.label,
+      todayCount: String((series[m.key] || {})[today] || 0),
+      onPlus: () => this.bump(m.key, 1),
+      onMinus: () => this.bump(m.key, -1),
+    }));
+
+    if (start) {
+      vm.graphs = M.metrics.map(m => {
+        const s = series[m.key] || {};
+        const values = days.map(d => s[d] || 0);
+        const max = Math.max(1, ...values);
+        const total = values.reduce((a, v) => a + v, 0);
+        const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
+        const bars = values.map(v => ({
+          style: {
+            flex: '1', minWidth: '0', borderRadius: '2px 2px 0 0',
+            height: v > 0 ? Math.round(6 + (v / max) * 84) + 'px' : '2px',
+            background: v > 0 ? color : 'var(--surface2,#eceae4)',
+          },
+        }));
+        // Trailing 7-day average, one dot per day, over the same x positions.
+        const dots = values.map((v, i) => {
+          const win = values.slice(Math.max(0, i - 6), i + 1);
+          const avg = win.reduce((a, x) => a + x, 0) / win.length;
+          return {
+            style: {
+              position: 'absolute', width: '5px', height: '5px', borderRadius: '50%',
+              background: 'var(--lapse,#9c7d33)', border: '1px solid var(--surface,#fbfaf7)',
+              left: 'calc(' + (((i + 0.5) / values.length) * 100).toFixed(3) + '% - 3px)',
+              bottom: Math.round((avg / max) * 90) + 'px',
+            },
+          };
+        });
+        return {
+          key: m.key, label: m.label, total: String(total), max: String(max),
+          bars, dots: values.length > 1 ? dots : [],
+          startLabel: days[0], endLabel: today,
+        };
+      });
+
+      const denom = days.length;
+      vm.ratios = M.metrics.filter(m => m.ratio).map(m => {
+        const s = series[m.key] || {};
+        const withData = days.filter(d => (s[d] || 0) > 0).length;
+        return {
+          key: m.key, label: m.label,
+          value: (withData / denom).toFixed(2),
+          daysLabel: withData + ' of ' + denom + ' tracked days',
+        };
+      });
+    }
+    return vm;
+  }
+
   // ── auth actions (server-side OTP — see backend /v1/auth/*) ─
   authApiRoot() {
     let base = '';
@@ -1235,6 +1462,16 @@ class Component extends DCLogic {
     };
   }
 
+  tabStyle(active) {
+    return {
+      flex: '1', minHeight: '44px', border: 'none', borderRadius: '9px',
+      fontSize: '14px', fontWeight: active ? '600' : '400',
+      background: active ? 'var(--surface,#fbfaf7)' : 'transparent',
+      color: active ? 'var(--fg,#1d1c19)' : 'var(--muted,#77746c)',
+      boxShadow: active ? '0 1px 2px var(--shadow,rgba(35,32,26,.08))' : 'none',
+    };
+  }
+
   renderVals() {
     const S = this.state;
     const cards = S.commitments.map(cm => this.cardVM(cm));
@@ -1249,6 +1486,15 @@ class Component extends DCLogic {
       signOut: () => { try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e) {} this.setState({ authed: false, authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '', view: 'dashboard' }); },
       isDashboard: S.view === 'dashboard', isDetail: S.view === 'detail', isCreate: S.view === 'create',
       isDecision: S.view === 'decision', isLapse: S.view === 'lapse', isSettings: S.view === 'settings',
+      isData: S.view === 'data',
+      data: S.view === 'data' ? this.dataVM() : null,
+      goalsTabStyle: this.tabStyle(S.view !== 'data'),
+      dataTabStyle: this.tabStyle(S.view === 'data'),
+      goGoals: () => this.setState({ view: 'dashboard' }),
+      goData: () => {
+        this.setState({ view: 'data' });
+        if (!this.state.metrics) this.loadMetrics();
+      },
       hasCards: cards.length > 0, noCards: cards.length === 0, cards,
       totalChargedFmt: this.money(S.settings.totalCharged), recipient: S.settings.recipient,
       apiBaseShown: S.settings.apiBaseUrl,

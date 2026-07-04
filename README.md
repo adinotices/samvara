@@ -6,10 +6,12 @@ next (usually longer) rung. Slip, miss, or let the deadline pass, and the stake
 is charged and you recommit — same length, higher stake. The rung never gets
 shorter.
 
-This repo contains a **static frontend** (the bundled app, unchanged except its
-sign-in gate, which is rewired to a real server-side email login) and a
+This repo contains a **static frontend** (the bundled app: a Goals tab for the
+ratchet and a Data tab of private daily tallies with graphs and ratios), a
 **portable API backend** that holds the Beeminder token, runs the ratchet
-logic, charges money, and persists state.
+logic, charges money, and persists state, and an **Android shell app** — the
+same frontend in a WebView plus native deadline notifications (see
+[The Android app](#the-android-app)).
 
 > **This app moves real money.** Charges go through Beeminder to whoever owns the
 > configured Beeminder token. Read [Money safety](#money-safety) before you arm
@@ -51,7 +53,15 @@ export:
 - boot error handling: a failed first data-load shows a "Couldn't reach the
   server" card with a Retry button instead of an eternal "Loading…", and an
   expired session (401) clears itself and lands on the sign-in gate;
-- a dashboard empty state, a `<title>`, and a favicon link.
+- a dashboard empty state, a `<title>`, and a favicon link;
+- the **Data tab**: five private daily tallies with +1/−1 buttons (the server's
+  calendar decides what "today" is — `METRICS_TZ`), bar graphs with a trailing
+  7-day average, and days-with-data ratios;
+- self-hosted **Newsreader** (`frontend/fonts/`): the raw export preconnects to
+  Google Fonts but never loads the family, and Google's static subsets can't
+  render the ṃ in "Saṃvara" anyway — Newsreader has no precomposed U+1E43 and
+  builds it from m + combining dot (U+0323), which only a custom subset
+  carries. Three woff2 files, served same-origin, no Google callout.
 
 All of those edits live in `frontend/src/app.html`. The design tool's export is
 one 800KB single-line file with the app embedded as a JSON string — unreadable
@@ -93,19 +103,23 @@ backend/
     config.py      all env-driven configuration
   tests/
     test_ratchet.py    parity tests pinning the mock's semantics
-    test_auth.py       OTP flow, brute-force caps, token handling
+    test_auth.py       OTP flow, brute-force caps, tokens, sign-out revocation
     test_beeminder.py  charge-client rails: floor/cap, dryrun, failure modes
     test_money.py      HTTP-layer money invariants: races, ledger, edge cases
-  Dockerfile       single-worker container, SQLite on a /data volume
+    test_api.py        dashboard ordering, daily-metric tallies, day boundary
+  Dockerfile       single-worker non-root container, SQLite on a /data volume
   requirements.txt
 
 frontend/
   src/
     app.html       the app's actual HTML/JS, unpacked and readable — EDIT THIS
     shell.html     bundle runtime/fonts/resources — machine territory
+  fonts/           self-hosted Newsreader woff2 (incl. the ṃ-decomposition subset)
   index.html       generated from src/ by the build (git-ignored)
   api-client.js    the REAL fetch client (drop-in for the mock)
   config.example.js   copy to config.js per environment (git-ignored)
+
+android/           WebView shell + native deadline notifications (see below)
 
 scripts/
   build-frontend.sh     assembles dist/ for static hosting
@@ -114,8 +128,11 @@ scripts/
   transform_bundle.py   strips the bundled mock, injects the config loader
 
 .github/workflows/
-  pages.yml        build + deploy the frontend to GitHub Pages
-  tick.yml         cron: POST /v1/tick
+  pages.yml          build + deploy the frontend to GitHub Pages (auto-retries
+                     GitHub's transient deploy flake once)
+  tick.yml           cron: POST /v1/tick
+  backend-tests.yml  the money-path test suite on every push — red means
+                     do not deploy the backend
 
 deploy/
   digitalocean/    docker-compose + notes
@@ -212,7 +229,7 @@ build instead of leaking.
 ## API
 
 All routes are under `/v1`. When `AUTH_MODE=token`, everything except health
-and the two auth endpoints requires `Authorization: Bearer <token>` — either a
+and the auth endpoints requires `Authorization: Bearer <token>` — either a
 session token from the OTP flow (what the browser uses) or the static
 `API_TOKEN` (what the cron tick uses).
 
@@ -221,6 +238,7 @@ session token from the OTP flow (what the browser uses) or the static
 | GET | `/v1/health` | Liveness (no auth). Effective config included only with a valid token. |
 | POST | `/v1/auth/send-code` | Email a one-time sign-in code to the server's `AUTH_EMAIL`. Always 204. |
 | POST | `/v1/auth/verify-code` | Exchange `{email, code}` for a 30-day session token. |
+| POST | `/v1/auth/sign-out` | Revoke the presented session token server-side. Always 204. |
 | GET | `/v1/commitments` | List all commitments. |
 | GET | `/v1/commitments/{id}` | One commitment. |
 | POST | `/v1/commitments` | Create `{name, base_days, base_stake}`. |
@@ -284,8 +302,45 @@ Abuse limits, all server-side: a code dies after **5 wrong guesses** or **10
 minutes**; sends are limited to **one email per minute** (repeats inside the
 window keep the existing code valid); only **SHA-256 hashes** of codes and
 session tokens are stored, so a copied database file contains no usable
-credential.
+credential. Signing out revokes the session **in the database**
+(`/v1/auth/sign-out`), not just in the browser's localStorage.
 
 No token or address ships in the static page — `config.js` holds only the API
 base URL. The static `API_TOKEN` exists solely for the GitHub Actions tick and
 never reaches a browser. The Beeminder token never leaves the server.
+
+---
+
+## The Android app
+
+`android/` is a sideloadable shell, deliberately thin: the UI is
+https://samvara.app in a WebView, so **every Pages deploy updates the app with
+no reinstall**. The native layer adds the one thing a website can't — a
+JobScheduler poller (~15 min, persists across reboots, pure AOSP so it runs on
+GrapheneOS without Play services) that reads `/v1/commitments` and notifies
+before money moves:
+
+- deadline within **6h** on an active rung,
+- deadline passed — the **24h confirmation window** is running,
+- under **3h** left in that window (last call before the auto-charge),
+- **auto-charged** and parked awaiting a recommit,
+- the stored session died (**401**) — alerts are paused until you sign in again.
+
+Each fires at most once per rung. The session token is copied out of the
+page's localStorage after each load (the app never injects into the page);
+sign-out clears it. Zero library dependencies — framework APIs only — so the
+only artifact Gradle needs is the Android Gradle Plugin.
+
+```
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 gradle assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+The build needs a full JDK (17+) and an Android SDK at the path in
+`android/local.properties`. The APK is debug-signed, which is fine for
+personal sideloading; installs upgrade in place as long as the same machine's
+debug keystore signs them. On first launch: accept the notification prompt,
+sign in, and (optionally) set battery usage to Unrestricted so Doze can't
+delay the polls — though with a 24h grace window even heavily deferred jobs
+have ample margin.

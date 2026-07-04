@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required by JobScheduler for jobs with a connectivity constraint. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Lets the persisted deadline-poller job survive reboots. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

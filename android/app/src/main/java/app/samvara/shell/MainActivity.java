@@ -110,14 +110,22 @@ public class MainActivity extends Activity {
     }
 
     private void scheduleDeadlinePoller() {
-        JobScheduler js = getSystemService(JobScheduler.class);
-        if (js.getPendingJob(JOB_ID) != null) return;
-        js.schedule(new JobInfo.Builder(JOB_ID,
-                new ComponentName(this, DeadlineJobService.class))
-                .setPeriodic(POLL_INTERVAL_MS)
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setPersisted(true)   // survives reboots
-                .build());
+        // Never let the poller take the UI down with it. GrapheneOS's per-app
+        // Network toggle revokes ACCESS_NETWORK_STATE at runtime, which makes
+        // this schedule call throw SecurityException.
+        try {
+            JobScheduler js = getSystemService(JobScheduler.class);
+            if (js.getPendingJob(JOB_ID) != null) return;
+            js.schedule(new JobInfo.Builder(JOB_ID,
+                    new ComponentName(this, DeadlineJobService.class))
+                    .setPeriodic(POLL_INTERVAL_MS)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .setPersisted(true)   // survives reboots
+                    .build());
+        } catch (Exception ignored) {
+            // WebView still works; deadline alerts just stay off until the
+            // permission situation changes and the app is reopened.
+        }
     }
 
     @Override

@@ -10,8 +10,8 @@ android {
         applicationId 'app.samvara.shell'
         minSdk 26          // adaptive icons + java.time + notification channels
         targetSdk 35
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.1'
     }
 
     compileOptions {

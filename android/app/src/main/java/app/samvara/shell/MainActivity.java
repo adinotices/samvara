@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowInsets;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -44,6 +45,20 @@ public class MainActivity extends Activity {
 
         web = new WebView(this);
         setContentView(web);
+
+        // targetSdk 35 enforces edge-to-edge: without explicit insets the top
+        // of the page (the app bar with New / theme toggle) hides under the
+        // status bar. Pad the WebView by the system bars instead.
+        if (Build.VERSION.SDK_INT >= 30) {
+            web.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets sb = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
+                return WindowInsets.CONSUMED;
+            });
+        } else {
+            web.setFitsSystemWindows(true);
+        }
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);

@@ -1,8 +1,8 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 3    package="app.samvara.shell"
-4    android:versionCode="3"
-5    android:versionName="1.2" >
+4    android:versionCode="4"
+5    android:versionName="1.3" >
 6
 7    <uses-sdk
 8        android:minSdkVersion="26"
@@ -33,8 +33,8 @@
 22-->/home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:12:9-41
 23        android:supportsRtl="true"
 23-->/home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:15:9-35
-24        android:theme="@android:style/Theme.DeviceDefault.DayNight" >
-24-->/home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:14:9-68
+24        android:theme="@android:style/Theme.DeviceDefault.NoActionBar" >
+24-->/home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:14:9-71
 25        <activity
 25-->/home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:17:9-25:20
 26            android:name="app.samvara.shell.MainActivity"

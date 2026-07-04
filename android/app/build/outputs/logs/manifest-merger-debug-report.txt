@@ -40,7 +40,7 @@ INJECTED from /home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml
 	android:icon
 		ADDED from /home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:13:9-43
 	android:theme
-		ADDED from /home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:14:9-68
+		ADDED from /home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:14:9-71
 activity#app.samvara.shell.MainActivity
 ADDED from /home/admin/repos/samvara/android/app/src/main/AndroidManifest.xml:17:9-25:20
 	android:exported

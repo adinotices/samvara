@@ -131,7 +131,9 @@ async def health(authorization: str | None = Header(default=None)) -> dict[str, 
 # ── reads ─────────────────────────────────────────────────────────────────────
 @app.get("/v1/commitments", dependencies=[Depends(require_auth)])
 async def list_commitments() -> list[dict[str, Any]]:
-    return store.list_commitments()
+    # Closest deadline first — the dashboard renders cards in this order. The
+    # due strings are uniform ISO-8601 UTC, so they sort lexicographically.
+    return sorted(store.list_commitments(), key=lambda cm: cm["current_rung"]["due"])
 
 
 @app.get("/v1/commitments/{cid}", dependencies=[Depends(require_auth)])

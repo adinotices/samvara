@@ -20,6 +20,12 @@
   button{cursor:pointer}
   ::-webkit-scrollbar{height:8px;width:8px}
   ::-webkit-scrollbar-thumb{background:rgba(120,116,108,.35);border-radius:8px}
+  /* The wordmark's ṃ, drawn as m + a CSS dot. No font carries a usable
+     precomposed U+1E43 here (Newsreader builds it from m + U+0323, which
+     Android's font selection never reaches), so the dot is ours: it inherits
+     color and scales in em with whatever font renders the m. */
+  .mdot{position:relative;display:inline-block}
+  .mdot::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:-0.08em;width:0.09em;height:0.09em;border-radius:50%;background:currentColor}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
@@ -420,7 +426,7 @@
             </svg>
           </div>
           <div>
-            <div style="font-family:'Newsreader',serif;font-size:27px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.015em;line-height:1.1">Saṃvara</div>
+            <div style="font-family:'Newsreader',serif;font-size:27px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.015em;line-height:1.1">Sa<span class="mdot">m</span>vara</div>
             <div style="font-size:12px;color:var(--muted,#77746c);margin-top:2px">heedfulness, made winnable</div>
           </div>
         </div>
@@ -510,7 +516,7 @@
         </svg>
       </div>
       <div style="line-height:1.1">
-        <div style="font-family:'Newsreader',serif;font-size:21px;font-weight:600;letter-spacing:-.01em;color:var(--fg,#1d1c19)">Saṃvara</div>
+        <div style="font-family:'Newsreader',serif;font-size:21px;font-weight:600;letter-spacing:-.01em;color:var(--fg,#1d1c19)">Sa<span class="mdot">m</span>vara</div>
         <div style="font-size:10.5px;color:var(--muted,#77746c);letter-spacing:.02em">heedfulness, made winnable</div>
       </div>
     </div>

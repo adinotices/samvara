@@ -23,12 +23,33 @@
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-<!-- The bundle preconnects but never actually loads Newsreader, so headings
-     silently fell back to the platform serif — and Android's serif lacks the
-     ṃ (U+1E43), borrowing an oversized glyph from another font. Newsreader
-     itself covers ṃ (latin-ext), so loading it renders the wordmark
-     uniformly everywhere. Only weight 600 is used. -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:wght@600&amp;display=swap">
+<!-- Newsreader, self-hosted (only weight 600 is used). The bundle preconnects
+     to Google Fonts but never loaded the family, so headings silently fell
+     back to the platform serif — and Android's serif lacks ṃ (U+1E43),
+     borrowing an oversized glyph from another face. Self-hosting also
+     survives Google-domain blocking.
+     Newsreader has NO precomposed U+1E43 in any subset (verified in the
+     cmaps); it renders ṃ by decomposition, m + U+0323 with GPOS mark
+     positioning. Google's static latin/latin-ext buckets omit U+0323, so the
+     extra 1.6KB "wordmark" face below carries it. It is declared LAST so it
+     wins the U+1E43 overlap with latin-ext's advertised (but empty) range. -->
+<style>
+@font-face {
+  font-family: 'Newsreader'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("fonts/newsreader-600-latin.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Newsreader'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("fonts/newsreader-600-latin-ext.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Newsreader'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url("fonts/newsreader-600-wordmark.woff2") format('woff2');
+  unicode-range: U+1E43, U+0323;
+}
+</style>
 <style>/* cyrillic-ext */
 @font-face {
   font-family: 'IBM Plex Mono';

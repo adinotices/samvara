@@ -29,9 +29,10 @@ python3 "$ROOT/scripts/pack_bundle.py" "$SRC/src" "$SRC/index.html"
 # 2. Transform the bundle → dist/index.html
 python3 "$ROOT/scripts/transform_bundle.py" "$SRC/index.html" "$OUT/index.html"
 
-# 2. Real API client + favicon
+# 2. Real API client + favicon + self-hosted fonts
 cp "$SRC/api-client.js" "$OUT/api-client.js"
 cp "$SRC/favicon.svg" "$OUT/favicon.svg"
+cp -r "$SRC/fonts" "$OUT/fonts"
 
 # 3. Config: prefer a real config.js, fall back to the example with a warning.
 if [ -f "$SRC/config.js" ]; then

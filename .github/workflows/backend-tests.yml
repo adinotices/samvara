@@ -1,0 +1,27 @@
+name: Backend tests
+
+# The money-path invariants (double-charge races, charge-fails-state-untouched,
+# ledger balance) live in backend/tests. This app charges real money, so they
+# run on every push — a red X here means do not deploy the backend.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest
+
+      - name: Run tests
+        run: cd backend && python -m pytest -q

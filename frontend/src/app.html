@@ -1043,14 +1043,21 @@ class Component extends DCLogic {
   async checkAutoMiss() {
     if (this._checking) return;
     const now = Date.now();
+    // The server re-checks grace on ITS clock and no-ops early calls, so a
+    // fast local clock would retry every second forever without this backoff.
+    this._amTried = this._amTried || {};
     const due = this.state.commitments.filter(cm => {
       const r = cm.current_rung;
       if (r.completed || r.awaiting_decision || r.awaiting_recommit || r.auto_missed) return false;
+      if (this._amTried[cm.id] && now - this._amTried[cm.id] < 60000) return false;
       return now > Date.parse(r.due) + this.api.GRACE_MS;
     });
     if (!due.length) return;
     this._checking = true;
-    try { for (const cm of due) await this.api.autoMiss(cm.id); await this.refresh(); }
+    try {
+      for (const cm of due) { this._amTried[cm.id] = now; await this.api.autoMiss(cm.id); }
+      await this.refresh();
+    }
     finally { this._checking = false; }
   }
 
@@ -1326,7 +1333,10 @@ class Component extends DCLogic {
     // The ratio denominator starts on the first day ANY metric saw data.
     const allDays = Object.values(series).flatMap(s => Object.keys(s)).sort();
     const start = allDays.length ? allDays[0] : null;
-    const days = start ? this.dayRange(start, today).slice(-180) : [];
+    // Ratios use the FULL range since tracking began; graphs cap at the last
+    // 180 days so the bars stay readable.
+    const days = start ? this.dayRange(start, today) : [];
+    const graphDays = days.slice(-180);
     vm.noData = !start;
     vm.hasData = !!start;
     vm.startLabel = start || '';
@@ -1341,7 +1351,7 @@ class Component extends DCLogic {
     if (start) {
       vm.graphs = M.metrics.map(m => {
         const s = series[m.key] || {};
-        const values = days.map(d => s[d] || 0);
+        const values = graphDays.map(d => s[d] || 0);
         const max = Math.max(1, ...values);
         const total = values.reduce((a, v) => a + v, 0);
         const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
@@ -1368,7 +1378,7 @@ class Component extends DCLogic {
         return {
           key: m.key, label: m.label, total: String(total), max: String(max),
           bars, dots: values.length > 1 ? dots : [],
-          startLabel: days[0], endLabel: today,
+          startLabel: graphDays[0], endLabel: today,
         };
       });
 
@@ -1493,7 +1503,9 @@ class Component extends DCLogic {
       goGoals: () => this.setState({ view: 'dashboard' }),
       goData: () => {
         this.setState({ view: 'data' });
-        if (!this.state.metrics) this.loadMetrics();
+        // Refetch on every entry: "today" is the server's calendar, and the
+        // tab may have last been seen before an NYC midnight.
+        this.loadMetrics();
       },
       hasCards: cards.length > 0, noCards: cards.length === 0, cards,
       totalChargedFmt: this.money(S.settings.totalCharged), recipient: S.settings.recipient,

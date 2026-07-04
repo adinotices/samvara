@@ -58,10 +58,17 @@ export:
   calendar decides what "today" is — `METRICS_TZ`), bar graphs with a trailing
   7-day average, and days-with-data ratios;
 - self-hosted **Newsreader** (`frontend/fonts/`): the raw export preconnects to
-  Google Fonts but never loads the family, and Google's static subsets can't
-  render the ṃ in "Saṃvara" anyway — Newsreader has no precomposed U+1E43 and
-  builds it from m + combining dot (U+0323), which only a custom subset
-  carries. Three woff2 files, served same-origin, no Google callout.
+  Google Fonts but never loads the family. Three woff2 files, served
+  same-origin, no Google callout;
+- the wordmark's **ṃ is drawn, not typed**: no Newsreader subset carries a
+  precomposed U+1E43 (it composes m + U+0323, which desktop Blink shapes but
+  the Android WebView's font selection never reaches), and system fonts render
+  a mismatched fallback glyph. The headline wordmarks use an `.mdot` span — a
+  `currentColor` CSS dot under a plain m — that scales in em and cannot fall
+  back to anything;
+- the **Dark/Light toggle persists** (`localStorage 'samvara.dark'`) and
+  reports theme changes to the Android shell via `window.SamvaraShell` so the
+  system bars follow the page.
 
 All of those edits live in `frontend/src/app.html`. The design tool's export is
 one 800KB single-line file with the app embedded as a JSON string — unreadable
@@ -114,7 +121,7 @@ frontend/
   src/
     app.html       the app's actual HTML/JS, unpacked and readable — EDIT THIS
     shell.html     bundle runtime/fonts/resources — machine territory
-  fonts/           self-hosted Newsreader woff2 (incl. the ṃ-decomposition subset)
+  fonts/           self-hosted Newsreader woff2 (the wordmark's ṃ itself is CSS)
   index.html       generated from src/ by the build (git-ignored)
   api-client.js    the REAL fetch client (drop-in for the mock)
   config.example.js   copy to config.js per environment (git-ignored)
@@ -330,6 +337,17 @@ Each fires at most once per rung. The session token is copied out of the
 page's localStorage after each load (the app never injects into the page);
 sign-out clears it. Zero library dependencies — framework APIs only — so the
 only artifact Gradle needs is the Android Gradle Plugin.
+
+Two more shell behaviors worth knowing:
+
+- **Cold starts clear the WebView HTTP cache**, so every open shows the latest
+  deploy — WebView's cache heuristics otherwise serve a stale page well past
+  its max-age. localStorage (session, theme) survives.
+- **The system bars follow the page theme.** The page calls
+  `window.SamvaraShell.onTheme()` on boot and on every Dark/Light toggle; the
+  shell recolors the inset strip, flips status-icon contrast, and remembers
+  the theme so the next cold start opens in the right colors before the page
+  paints.
 
 ```
 cd android

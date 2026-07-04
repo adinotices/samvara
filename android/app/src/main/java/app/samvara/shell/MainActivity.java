@@ -13,7 +13,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.WebResourceRequest;
+import android.widget.FrameLayout;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -35,6 +37,7 @@ public class MainActivity extends Activity {
     static final String SITE = "https://samvara.app/";
     static final int JOB_ID = 1;
     static final long POLL_INTERVAL_MS = 15 * 60 * 1000L;   // JobScheduler minimum
+    static final int PAGE_BG = 0xFFF4F2EE;   // the page's light-mode --bg
 
     private WebView web;
 
@@ -44,20 +47,28 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         web = new WebView(this);
-        setContentView(web);
+        // Pad a wrapper, not the WebView: WebView does not reliably honor its
+        // own padding, which left the page top under the status-bar clock.
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(PAGE_BG);   // matches the page's light --bg
+        frame.addView(web);
+        setContentView(frame);
 
-        // targetSdk 35 enforces edge-to-edge: without explicit insets the top
-        // of the page (the app bar with New / theme toggle) hides under the
-        // status bar. Pad the WebView by the system bars instead.
+        // targetSdk 35 enforces edge-to-edge: inset the frame by the system
+        // bars, and ask for dark status-bar icons so they don't vanish
+        // against the light page background.
         if (Build.VERSION.SDK_INT >= 30) {
-            web.setOnApplyWindowInsetsListener((v, insets) -> {
+            frame.setOnApplyWindowInsetsListener((v, insets) -> {
                 android.graphics.Insets sb = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
                 return WindowInsets.CONSUMED;
             });
+            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            getWindow().getInsetsController().setSystemBarsAppearance(light, light);
         } else {
-            web.setFitsSystemWindows(true);
+            frame.setFitsSystemWindows(true);
         }
 
         WebSettings s = web.getSettings();

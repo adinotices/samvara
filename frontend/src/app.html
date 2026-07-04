@@ -23,6 +23,12 @@
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<!-- The bundle preconnects but never actually loads Newsreader, so headings
+     silently fell back to the platform serif — and Android's serif lacks the
+     ṃ (U+1E43), borrowing an oversized glyph from another font. Newsreader
+     itself covers ṃ (latin-ext), so loading it renders the wordmark
+     uniformly everywhere. Only weight 600 is used. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:wght@600&amp;display=swap">
 <style>/* cyrillic-ext */
 @font-face {
   font-family: 'IBM Plex Mono';

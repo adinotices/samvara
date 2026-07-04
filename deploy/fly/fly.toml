@@ -21,7 +21,7 @@ primary_region = "iad"
   # Both origins the frontend may be served from: the custom domain and the
   # bare GitHub Pages origin (used until samvara.app DNS is configured).
   ALLOWED_ORIGINS = "https://samvara.app,https://adinotices.github.io"
-  BEEMINDER_DRYRUN = "true"
+  BEEMINDER_DRYRUN = "false"
   MIN_STAKE = "1.00"
   MAX_CHARGE_USD = "50.00"
   GRACE_HOURS = "24"

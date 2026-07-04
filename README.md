@@ -1,6 +1,6 @@
 # Samvara
 
-A commitment-ratchet app backed by Beeminder. You commit to a clean streak of a
+A commitment-ratchet app connected to Beeminder. You commit to a clean streak of a
 fixed length with money at stake. Finish clean and you deliberately choose the
 next (usually longer) rung. Slip, miss, or let the deadline pass, and the stake
 is charged and you recommit — same length, higher stake. The rung never gets

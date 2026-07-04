@@ -48,6 +48,11 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);   // the app keeps its session in localStorage
+        // Honor the page's <meta viewport> like a real mobile browser does.
+        // Without these the page lays out at a legacy fixed width and the
+        // right side of the app bar (New, theme toggle) is clipped off-screen.
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override

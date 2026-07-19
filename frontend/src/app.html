@@ -1043,25 +1043,15 @@ class Component extends DCLogic {
     reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '',
     // Persisted so an explicit Dark/Light toggle survives reloads (the
     // Android shell fetches a fresh page on every cold start, which reset an
-    // unpersisted toggle). Absent that override, follow the OS/browser's
-    // prefers-color-scheme — both for this initial read and live, via the
-    // matchMedia listener registered in componentDidMount.
+    // unpersisted toggle). Absent that override, follow sunset/sunrise (see
+    // isAutoDark below) — deliberately not prefers-color-scheme, which the
+    // Android WebView doesn't reliably report.
     dark: (() => {
       try {
         const v = localStorage.getItem('samvara.dark');
         if (v !== null) return v === '1';
       } catch (e) {}
-      // The Android shell's WebView doesn't reliably report
-      // prefers-color-scheme, so it hands over the real system setting via
-      // its JS bridge instead (see MainActivity#isSystemDark).
-      try {
-        if (window.SamvaraShell && window.SamvaraShell.isSystemDark) {
-          return window.SamvaraShell.isSystemDark() === '1';
-        }
-      } catch (e) {}
-      try {
-        if (window.matchMedia) return window.matchMedia('(prefers-color-scheme: dark)').matches;
-      } catch (e) {}
+      try { return this.isAutoDark(); } catch (e) {}
       return !!this.props.defaultDark;
     })(),
     view: 'dashboard',
@@ -1082,18 +1072,6 @@ class Component extends DCLogic {
 
   async componentDidMount() {
     this.notifyShellTheme(this.state.dark);   // sync the shell on boot
-    // Keep following the system theme live as long as the user hasn't
-    // explicitly picked one via the Dark/Light toggle — that choice always
-    // wins, and setTheme's persist=false path never overwrites it.
-    try {
-      this._systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
-      this._onSystemTheme = e => this.applySystemTheme(e.matches);
-      this._systemTheme.addEventListener('change', this._onSystemTheme);
-    } catch (e) {}
-    // The Android shell calls this directly (MainActivity#onConfigurationChanged)
-    // when the system theme flips while the app is open — its WebView doesn't
-    // fire the matchMedia listener above the way a real browser does.
-    window.__samvaraApplySystemTheme = dark => this.applySystemTheme(dark);
     this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
     await this.api.init();
     try {
@@ -1115,13 +1093,13 @@ class Component extends DCLogic {
       return;
     }
     this.setState({ loaded: true });
-    this._t = setInterval(() => { this.setState({ now: Date.now() }); this.checkAutoMiss(); }, 1000);
+    this._t = setInterval(() => {
+      this.setState({ now: Date.now() });
+      this.checkAutoMiss();
+      this.updateAutoTheme();
+    }, 1000);
   }
-  componentWillUnmount() {
-    clearInterval(this._t);
-    try { this._systemTheme && this._systemTheme.removeEventListener('change', this._onSystemTheme); } catch (e) {}
-    try { delete window.__samvaraApplySystemTheme; } catch (e) {}
-  }
+  componentWillUnmount() { clearInterval(this._t); }
 
   // Any commitment whose 24h grace window has elapsed with no response is
   // auto-charged (assumed miss) and parked awaiting a recommit choice.
@@ -1152,18 +1130,79 @@ class Component extends DCLogic {
     this.setState({ commitments, settings });
   }
 
-  // ── theme ────────────────────────────────────────────────
-  // Shared by the matchMedia listener and the Android bridge: only apply a
-  // system-driven theme change if the user hasn't pinned an explicit choice.
-  applySystemTheme(dark) {
-    let explicit = false;
-    try { explicit = localStorage.getItem('samvara.dark') !== null; } catch (e) {}
-    if (!explicit) this.setTheme(dark, false);
+  // ── theme: sunset/sunrise, not prefers-color-scheme ───────
+  // The Android WebView doesn't reliably report prefers-color-scheme, so
+  // auto-theming is plain arithmetic instead: today's NYC sunset/sunrise (the
+  // app's existing time anchor — see METRICS_TZ) as clock times, compared
+  // against wherever the device's own clock says "now" is. Works identically
+  // in a desktop browser, the Android WebView, or anywhere else — no OS API
+  // involved, so nothing here can be "unreliable" the way prefers-color-scheme
+  // is.
+  static NYC_LAT = 40.7128;
+  static NYC_LON = -74.006;
+
+  // NOAA's sunrise-equation approximation (~1 minute of error — plenty for a
+  // cosmetic theme switch). Returns today's NYC sunrise/sunset as minutes
+  // since local NYC midnight, or null if the sun doesn't rise/set that day
+  // (never happens at NYC's latitude; the check is just for safety).
+  nycSunClockMinutes(date) {
+    const rad = Math.PI / 180;
+    const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+    const dayOfYear = Math.floor((date.getTime() - yearStart) / 86400000) + 1;
+    const gamma = (2 * Math.PI / 365) * (dayOfYear - 1);
+    const eqTime = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
+                   - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
+    const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
+                 - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
+                 - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
+    const latRad = Component.NYC_LAT * rad;
+    const zenith = 90.833 * rad;   // standard sunrise/sunset zenith (refraction + solar radius)
+    const cosH = (Math.cos(zenith) - Math.sin(latRad) * Math.sin(decl)) / (Math.cos(latRad) * Math.cos(decl));
+    if (cosH > 1 || cosH < -1) return null;
+    const haDeg = Math.acos(cosH) / rad;
+    const solarNoon = 720 - 4 * Component.NYC_LON - eqTime;   // UTC minutes-of-day
+    const clockMinutes = utcMinOfDay => {
+      const ms = yearStart + (dayOfYear - 1) * 86400000 + utcMinOfDay * 60000;
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(new Date(ms));
+      return (Number(parts.find(p => p.type === 'hour').value) % 24) * 60
+           + Number(parts.find(p => p.type === 'minute').value);
+    };
+    return { sunrise: clockMinutes(solarNoon - haDeg * 4), sunset: clockMinutes(solarNoon + haDeg * 4) };
   }
 
-  // persist=false is the system-follow path above: it updates the visual
-  // theme without writing an explicit override, so the app keeps following
-  // the OS until the user actually taps Dark/Light themselves.
+  // "Now," as minutes since local midnight in the device's own IANA tz
+  // (Intl.DateTimeFormat, no permissions needed) — falling back to NYC's if
+  // the device can't report one.
+  localClockMinutes(date) {
+    let tz = 'America/New_York';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) {}
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(date);
+    return (Number(parts.find(p => p.type === 'hour').value) % 24) * 60
+         + Number(parts.find(p => p.type === 'minute').value);
+  }
+
+  isAutoDark(date = new Date()) {
+    const sun = this.nycSunClockMinutes(date);
+    if (!sun) return false;
+    const now = this.localClockMinutes(date);
+    return now >= sun.sunset || now < sun.sunrise;
+  }
+
+  // Runs on the 1s tick; only takes effect if the user hasn't pinned an
+  // explicit Dark/Light choice (setTheme's persist=false path never writes
+  // one, so this keeps re-evaluating every tick without fighting a toggle).
+  updateAutoTheme() {
+    let explicit = false;
+    try { explicit = localStorage.getItem('samvara.dark') !== null; } catch (e) {}
+    if (explicit) return;
+    const dark = this.isAutoDark();
+    if (dark !== this.state.dark) this.setTheme(dark, false);
+  }
+
   setTheme(dark, persist = true) {
     this.setState({ dark });
     if (persist) {

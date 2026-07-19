@@ -9,7 +9,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -75,10 +74,6 @@ public class MainActivity extends Activity {
 
         // The page calls window.SamvaraShell.onTheme('1'|'0') on boot and on
         // every Dark/Light toggle (see setTheme in frontend/src/app.html).
-        // isSystemDark() is the reverse direction: the page's own boot-time
-        // prefers-color-scheme read is unreliable inside this WebView, so it
-        // asks the shell for the real system setting instead (see the `dark`
-        // initializer in frontend/src/app.html).
         web.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface
             public void onTheme(String dark) {
@@ -86,11 +81,6 @@ public class MainActivity extends Activity {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                         .putBoolean(PREF_DARK, d).apply();
                 runOnUiThread(() -> applyTheme(d));
-            }
-
-            @android.webkit.JavascriptInterface
-            public String isSystemDark() {
-                return systemIsDark() ? "1" : "0";
             }
         }, "SamvaraShell");
 
@@ -158,27 +148,6 @@ public class MainActivity extends Activity {
                 e.apply();
             } catch (Exception ignored) { }
         });
-    }
-
-    private boolean systemIsDark() {
-        int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return mode == Configuration.UI_MODE_NIGHT_YES;
-    }
-
-    /**
-     * uiMode is declared in configChanges (the manifest) so a system theme
-     * flip lands here instead of recreating the Activity. Push it to the page
-     * the same way the matchMedia listener would on a real browser; the page
-     * round-trips back through onTheme() above, which is what actually
-     * recolors the system bars.
-     */
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        boolean dark = systemIsDark();
-        web.evaluateJavascript(
-                "window.__samvaraApplySystemTheme && window.__samvaraApplySystemTheme(" + dark + ")",
-                null);
     }
 
     /** Match the system-bar strip and icon contrast to the page theme. */

@@ -1041,12 +1041,18 @@ class Component extends DCLogic {
     authed: (() => { try { return localStorage.getItem('samvara.authed') === '1'; } catch (e) { return false; } })(),
     authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '',
     reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '',
-    // Persisted so the theme survives reloads (the Android shell fetches a
-    // fresh page on every cold start, which reset an unpersisted toggle).
+    // Persisted so an explicit Dark/Light toggle survives reloads (the
+    // Android shell fetches a fresh page on every cold start, which reset an
+    // unpersisted toggle). Absent that override, follow the OS/browser's
+    // prefers-color-scheme — both for this initial read and live, via the
+    // matchMedia listener registered in componentDidMount.
     dark: (() => {
       try {
         const v = localStorage.getItem('samvara.dark');
         if (v !== null) return v === '1';
+      } catch (e) {}
+      try {
+        if (window.matchMedia) return window.matchMedia('(prefers-color-scheme: dark)').matches;
       } catch (e) {}
       return !!this.props.defaultDark;
     })(),
@@ -1068,6 +1074,18 @@ class Component extends DCLogic {
 
   async componentDidMount() {
     this.notifyShellTheme(this.state.dark);   // sync the shell on boot
+    // Keep following the system theme live as long as the user hasn't
+    // explicitly picked one via the Dark/Light toggle — that choice always
+    // wins, and setTheme's persist=false path (below) never overwrites it.
+    try {
+      this._systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+      this._onSystemTheme = e => {
+        let explicit = false;
+        try { explicit = localStorage.getItem('samvara.dark') !== null; } catch (err) {}
+        if (!explicit) this.setTheme(e.matches, false);
+      };
+      this._systemTheme.addEventListener('change', this._onSystemTheme);
+    } catch (e) {}
     this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
     await this.api.init();
     try {
@@ -1091,7 +1109,10 @@ class Component extends DCLogic {
     this.setState({ loaded: true });
     this._t = setInterval(() => { this.setState({ now: Date.now() }); this.checkAutoMiss(); }, 1000);
   }
-  componentWillUnmount() { clearInterval(this._t); }
+  componentWillUnmount() {
+    clearInterval(this._t);
+    try { this._systemTheme && this._systemTheme.removeEventListener('change', this._onSystemTheme); } catch (e) {}
+  }
 
   // Any commitment whose 24h grace window has elapsed with no response is
   // auto-charged (assumed miss) and parked awaiting a recommit choice.
@@ -1123,9 +1144,15 @@ class Component extends DCLogic {
   }
 
   // ── theme ────────────────────────────────────────────────
-  setTheme(dark) {
+  // persist=false is the system-follow path (componentDidMount's matchMedia
+  // listener): it updates the visual theme without writing an explicit
+  // override, so the app keeps following the OS until the user actually
+  // taps Dark/Light themselves.
+  setTheme(dark, persist = true) {
     this.setState({ dark });
-    try { localStorage.setItem('samvara.dark', dark ? '1' : '0'); } catch (e) {}
+    if (persist) {
+      try { localStorage.setItem('samvara.dark', dark ? '1' : '0'); } catch (e) {}
+    }
     this.notifyShellTheme(dark);
   }
 

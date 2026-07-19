@@ -346,6 +346,15 @@ _METRIC_KEYS = {m["key"] for m in METRICS}
 # the same mechanism that already charges auto-missed commitments.
 PENALTY_METRIC = "gaze_goal_broken"
 
+# gaze_goal_broken was already being tallied in the Data tab (since
+# 2026-07-03, well before this charging feature existed) with no financial
+# consequence. Without this floor, the first tick sweep after deploy treats
+# every pre-existing day's count as unbilled backlog — since old days have a
+# metric_days row but no penalty_days row, count > charged_count(=0) for all
+# of them — and charges the entire historical tally at once. Keep this at
+# the date the feature shipped; never move it earlier.
+PENALTY_START_DAY = "2026-07-18"
+
 
 def metrics_today(now: dt.datetime | None = None) -> str:
     """The current calendar day (YYYY-MM-DD) in the configured metrics tz."""
@@ -448,7 +457,7 @@ async def tick() -> dict[str, Any]:
     penalty_errors: list[dict[str, Any]] = []
     now = dt.datetime.now(dt.timezone.utc)
 
-    for pending in store.pending_penalties(PENALTY_METRIC):
+    for pending in store.pending_penalties(PENALTY_METRIC, since=PENALTY_START_DAY):
         day = pending["day"]
         async with _charge_lock:
             # Recompute from fresh state: a concurrent tick or a same-day tap

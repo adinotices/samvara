@@ -287,8 +287,12 @@ def test_is_past_grace_exact_boundary_is_not_past():
 # The tally is keyed to *today* (the server clock rules, per metrics_today),
 # so to simulate a day that has closed these tests relabel the bookkeeping
 # rows onto a day far enough in the past that its tz's midnight has passed —
-# the same trick backdate() plays for commitment grace windows.
-def backdate_penalty_day(new_day="2000-01-01") -> str:
+# the same trick backdate() plays for commitment grace windows. It must also
+# be on/after PENALTY_START_DAY, or pending_penalties' floor (added after the
+# production incident where pre-existing tally days got billed as backlog)
+# excludes it just like a real pre-feature day would be. PENALTY_START_DAY
+# itself already shipped, so it's always safely in the past.
+def backdate_penalty_day(new_day=main.PENALTY_START_DAY) -> str:
     today = main.metrics_today()
     with store.lock, store._conn:
         store._conn.execute(
@@ -364,6 +368,28 @@ def test_goal_broken_failed_charge_leaves_state_untouched(monkeypatch):
     assert out["penalty_errors"] == [{"day": day, "error": "simulated Beeminder outage"}]
     assert total_charged() == 0
     assert store.get_penalty_day(day)["charged_count"] == 0
+
+
+def test_pre_feature_tally_is_not_retroactively_charged(monkeypatch):
+    """Regression: gaze_goal_broken was tracked in the Data tab for weeks
+    before the deferred-penalty feature shipped. Those old days have a
+    metric_days row but no penalty_days row (upsert_penalty_tz never ran for
+    them), so a naive `count > charged_count` sweep bills the entire
+    pre-feature backlog the first time /tick runs post-deploy — which is
+    exactly what happened in production. Days before PENALTY_START_DAY must
+    never be charged."""
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    old_day = "2026-07-10"  # before PENALTY_START_DAY, tallied pre-feature
+    assert old_day < main.PENALTY_START_DAY
+    with store.lock, store._conn:
+        store._conn.execute(
+            "INSERT INTO metric_days (metric, day, count) VALUES (?, ?, ?)",
+            ("gaze_goal_broken", old_day, 5))
+    out = client.post("/v1/tick", headers=HDR).json()
+    assert out["penalties_charged_count"] == 0
+    assert out["penalties_charged"] == []
+    assert CHARGES == []
+    assert total_charged() == 0
 
 
 def test_day_end_utc_falls_back_on_missing_or_bogus_tz():

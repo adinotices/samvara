@@ -209,14 +209,24 @@ class Store:
                 (charged_count, day),
             )
 
-    def pending_penalties(self, metric: str) -> list[dict[str, Any]]:
-        """Days where `metric`'s tally exceeds what's already been charged."""
+    def pending_penalties(self, metric: str, since: str) -> list[dict[str, Any]]:
+        """Days on/after `since` where `metric`'s tally exceeds what's already
+        been charged.
+
+        The `since` floor matters for any metric that was tracked before it
+        started carrying a financial penalty: those older days have a
+        metric_days row but no penalty_days row (nothing ever charged them),
+        so COALESCE(pd.charged_count, 0) reads as 0 and — without the floor —
+        they'd look identical to genuine new backlog and get billed in full
+        the moment the sweep first runs.
+        """
         with self.lock:
             rows = self._conn.execute(
                 """SELECT md.day, md.count, pd.tz, COALESCE(pd.charged_count, 0)
                        FROM metric_days md LEFT JOIN penalty_days pd ON pd.day = md.day
-                       WHERE md.metric = ? AND md.count > COALESCE(pd.charged_count, 0)""",
-                (metric,),
+                       WHERE md.metric = ? AND md.day >= ?
+                         AND md.count > COALESCE(pd.charged_count, 0)""",
+                (metric, since),
             ).fetchall()
         return [
             {"day": day, "count": count, "tz": tz, "charged_count": charged}

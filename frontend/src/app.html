@@ -1051,6 +1051,14 @@ class Component extends DCLogic {
         const v = localStorage.getItem('samvara.dark');
         if (v !== null) return v === '1';
       } catch (e) {}
+      // The Android shell's WebView doesn't reliably report
+      // prefers-color-scheme, so it hands over the real system setting via
+      // its JS bridge instead (see MainActivity#isSystemDark).
+      try {
+        if (window.SamvaraShell && window.SamvaraShell.isSystemDark) {
+          return window.SamvaraShell.isSystemDark() === '1';
+        }
+      } catch (e) {}
       try {
         if (window.matchMedia) return window.matchMedia('(prefers-color-scheme: dark)').matches;
       } catch (e) {}
@@ -1076,16 +1084,16 @@ class Component extends DCLogic {
     this.notifyShellTheme(this.state.dark);   // sync the shell on boot
     // Keep following the system theme live as long as the user hasn't
     // explicitly picked one via the Dark/Light toggle — that choice always
-    // wins, and setTheme's persist=false path (below) never overwrites it.
+    // wins, and setTheme's persist=false path never overwrites it.
     try {
       this._systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
-      this._onSystemTheme = e => {
-        let explicit = false;
-        try { explicit = localStorage.getItem('samvara.dark') !== null; } catch (err) {}
-        if (!explicit) this.setTheme(e.matches, false);
-      };
+      this._onSystemTheme = e => this.applySystemTheme(e.matches);
       this._systemTheme.addEventListener('change', this._onSystemTheme);
     } catch (e) {}
+    // The Android shell calls this directly (MainActivity#onConfigurationChanged)
+    // when the system theme flips while the app is open — its WebView doesn't
+    // fire the matchMedia listener above the way a real browser does.
+    window.__samvaraApplySystemTheme = dark => this.applySystemTheme(dark);
     this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
     await this.api.init();
     try {
@@ -1112,6 +1120,7 @@ class Component extends DCLogic {
   componentWillUnmount() {
     clearInterval(this._t);
     try { this._systemTheme && this._systemTheme.removeEventListener('change', this._onSystemTheme); } catch (e) {}
+    try { delete window.__samvaraApplySystemTheme; } catch (e) {}
   }
 
   // Any commitment whose 24h grace window has elapsed with no response is
@@ -1144,10 +1153,17 @@ class Component extends DCLogic {
   }
 
   // ── theme ────────────────────────────────────────────────
-  // persist=false is the system-follow path (componentDidMount's matchMedia
-  // listener): it updates the visual theme without writing an explicit
-  // override, so the app keeps following the OS until the user actually
-  // taps Dark/Light themselves.
+  // Shared by the matchMedia listener and the Android bridge: only apply a
+  // system-driven theme change if the user hasn't pinned an explicit choice.
+  applySystemTheme(dark) {
+    let explicit = false;
+    try { explicit = localStorage.getItem('samvara.dark') !== null; } catch (e) {}
+    if (!explicit) this.setTheme(dark, false);
+  }
+
+  // persist=false is the system-follow path above: it updates the visual
+  // theme without writing an explicit override, so the app keeps following
+  // the OS until the user actually taps Dark/Light themselves.
   setTheme(dark, persist = true) {
     this.setState({ dark });
     if (persist) {

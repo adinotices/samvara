@@ -77,6 +77,8 @@ def _clean(monkeypatch):
     monkeypatch.setattr(main, "_charge_lock", asyncio.Lock())
     with store.lock, store._conn:
         store._conn.execute("DELETE FROM commitments")
+        store._conn.execute("DELETE FROM metric_days")
+        store._conn.execute("DELETE FROM penalty_days")
     store.update_settings({"totalCharged": 0})
     # Debounce off by default so sequential test actions don't trip it; the
     # debounce test switches it back on.
@@ -279,3 +281,93 @@ def test_is_past_grace_exact_boundary_is_not_past():
     end = ratchet.grace_end_ms(cm["current_rung"], settings.grace_ms)
     assert ratchet.is_past_grace(cm, settings.grace_ms, at_ms=end) is False
     assert ratchet.is_past_grace(cm, settings.grace_ms, at_ms=end + 1) is True
+
+
+# ── end-of-day "goal broken" penalty (deferred Beeminder charge) ─────────────
+# The tally is keyed to *today* (the server clock rules, per metrics_today),
+# so to simulate a day that has closed these tests relabel the bookkeeping
+# rows onto a day far enough in the past that its tz's midnight has passed —
+# the same trick backdate() plays for commitment grace windows.
+def backdate_penalty_day(new_day="2000-01-01") -> str:
+    today = main.metrics_today()
+    with store.lock, store._conn:
+        store._conn.execute(
+            "UPDATE metric_days SET day=? WHERE metric='gaze_goal_broken' AND day=?",
+            (new_day, today))
+        store._conn.execute(
+            "UPDATE penalty_days SET day=? WHERE day=?", (new_day, today))
+    return new_day
+
+
+def test_goal_broken_bump_does_not_charge_immediately(monkeypatch):
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    r = client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
+                    json={"delta": 1, "tz": "UTC"})
+    assert r.status_code == 200
+    assert CHARGES == []
+    assert r.json()["pendingPenalty"]["amount"] == 1
+    assert total_charged() == 0
+
+
+def test_goal_broken_bump_without_tz_falls_back_to_metrics_tz():
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1})
+    row = store.get_penalty_day(main.metrics_today())
+    assert row["tz"] == settings.metrics_tz
+
+
+def test_goal_broken_not_charged_until_day_closes(monkeypatch):
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
+                json={"delta": 1, "tz": "UTC"})
+    # Relabel onto a day far in the future so its midnight can't have passed
+    # regardless of what time this test happens to run.
+    backdate_penalty_day("2099-01-01")
+    out = client.post("/v1/tick", headers=HDR).json()
+    assert out["penalties_charged_count"] == 0
+    assert CHARGES == []
+
+
+def test_goal_broken_charges_net_count_once_day_closes(monkeypatch):
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    for _ in range(3):
+        client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
+                    json={"delta": 1, "tz": "UTC"})
+    day = backdate_penalty_day()
+    out = client.post("/v1/tick", headers=HDR).json()
+    assert out["penalties_charged_count"] == 1
+    entry = out["penalties_charged"][0]
+    assert entry["day"] == day and entry["amount"] == 3
+    assert "looking at women with sexual desire" in entry["charge"]["note"]
+    assert CHARGES == [3.0] and total_charged() == 3.0
+    # Idempotent: a repeated tick doesn't charge the same day twice.
+    out2 = client.post("/v1/tick", headers=HDR).json()
+    assert out2["penalties_charged_count"] == 0
+    assert CHARGES == [3.0]
+
+
+def test_goal_broken_undo_before_close_reduces_the_charge(monkeypatch):
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": -1, "tz": "UTC"})
+    backdate_penalty_day()
+    out = client.post("/v1/tick", headers=HDR).json()
+    assert out["penalties_charged"][0]["amount"] == 1
+    assert CHARGES == [1.0]
+
+
+def test_goal_broken_failed_charge_leaves_state_untouched(monkeypatch):
+    client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
+    day = backdate_penalty_day()
+    monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={1.0}))
+    out = client.post("/v1/tick", headers=HDR).json()
+    assert out["penalty_errors"] == [{"day": day, "error": "simulated Beeminder outage"}]
+    assert total_charged() == 0
+    assert store.get_penalty_day(day)["charged_count"] == 0
+
+
+def test_day_end_utc_falls_back_on_missing_or_bogus_tz():
+    ny = main._day_end_utc("2026-07-18", "America/New_York")
+    assert main._day_end_utc("2026-07-18", None) == ny
+    assert main._day_end_utc("2026-07-18", "not-a-real-tz") == ny
+    assert ny == main._day_end_utc("2026-07-18", settings.metrics_tz)

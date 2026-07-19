@@ -73,6 +73,17 @@ class Store:
                        PRIMARY KEY (metric, day)
                    )"""
             )
+            # End-of-day Beeminder penalty bookkeeping for the "goal broken"
+            # tally. One row per day: which tz decides when that day closes,
+            # and how much of that day's count has already been charged (so
+            # the tick sweep only ever bills the *new* delta).
+            self._conn.execute(
+                """CREATE TABLE IF NOT EXISTS penalty_days (
+                       day           TEXT PRIMARY KEY,
+                       tz            TEXT NOT NULL,
+                       charged_count INTEGER NOT NULL DEFAULT 0
+                   )"""
+            )
             row = self._conn.execute("SELECT v FROM kv WHERE k='settings'").fetchone()
             if row is None:
                 self._conn.execute(
@@ -163,6 +174,54 @@ class Store:
         for metric, day, count in rows:
             out.setdefault(metric, {})[day] = count
         return out
+
+    def metric_count(self, metric: str, day: str) -> int:
+        with self.lock:
+            row = self._conn.execute(
+                "SELECT count FROM metric_days WHERE metric=? AND day=?", (metric, day)
+            ).fetchone()
+        return row[0] if row else 0
+
+    # ── end-of-day penalty bookkeeping ────────────────────────────────────
+    def upsert_penalty_tz(self, day: str, tz: str) -> None:
+        """Record which tz's midnight should close out `day`'s penalty.
+
+        Last write wins: if the device's tz changes mid-day (e.g. travel),
+        the most recent tap decides when the day closes."""
+        with self.lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO penalty_days (day, tz, charged_count) VALUES (?, ?, 0)
+                   ON CONFLICT(day) DO UPDATE SET tz=excluded.tz""",
+                (day, tz),
+            )
+
+    def get_penalty_day(self, day: str) -> dict[str, Any] | None:
+        with self.lock:
+            row = self._conn.execute(
+                "SELECT tz, charged_count FROM penalty_days WHERE day=?", (day,)
+            ).fetchone()
+        return {"tz": row[0], "charged_count": row[1]} if row else None
+
+    def mark_penalty_charged(self, day: str, charged_count: int) -> None:
+        with self.lock, self._conn:
+            self._conn.execute(
+                "UPDATE penalty_days SET charged_count=? WHERE day=?",
+                (charged_count, day),
+            )
+
+    def pending_penalties(self, metric: str) -> list[dict[str, Any]]:
+        """Days where `metric`'s tally exceeds what's already been charged."""
+        with self.lock:
+            rows = self._conn.execute(
+                """SELECT md.day, md.count, pd.tz, COALESCE(pd.charged_count, 0)
+                       FROM metric_days md LEFT JOIN penalty_days pd ON pd.day = md.day
+                       WHERE md.metric = ? AND md.count > COALESCE(pd.charged_count, 0)""",
+                (metric,),
+            ).fetchall()
+        return [
+            {"day": day, "count": count, "tz": tz, "charged_count": charged}
+            for day, count, tz, charged in rows
+        ]
 
     # ── OTP codes (hashed; one active code per email) ─────────────────────
     def last_otp_created(self, email: str) -> int | None:

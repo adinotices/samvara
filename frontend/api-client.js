@@ -127,8 +127,8 @@ export async function signOut() {
 // The server owns the vocabulary (which metrics exist) and the calendar (which
 // local day a tap lands on — METRICS_TZ, America/New_York by default).
 export async function getMetrics() { return req('GET', '/metrics'); }
-export async function bumpMetric(key, delta) {
-  return req('POST', '/metrics/' + encodeURIComponent(key) + '/bump', { delta });
+export async function bumpMetric(key, delta, tz) {
+  return req('POST', '/metrics/' + encodeURIComponent(key) + '/bump', { delta, tz: tz || null });
 }
 
 // The Settings screen edits apiBaseUrl. Persist it as a LOCAL override so this

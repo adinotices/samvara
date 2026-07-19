@@ -521,6 +521,12 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <sc-if value="{{ hasPendingPenalty }}">
+        <div onclick="{{ goData }}" title="Goal-broken taps today, not yet charged — settles at 11:59 PM" style="cursor:pointer;display:flex;flex-direction:column;align-items:flex-end;padding:4px 12px;border-radius:10px;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent)">
+          <span style="font-size:9px;letter-spacing:.06em;color:var(--missed,#a3573a);text-transform:uppercase">Pending</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--missed,#a3573a)">{{ pendingPenaltyFmt }}</span>
+        </div>
+      </sc-if>
       <div onclick="{{ goSettings }}" title="Lifetime total charged" style="cursor:pointer;display:flex;flex-direction:column;align-items:flex-end;padding:4px 12px;border-radius:10px;background:var(--surface2,#eceae4)">
         <span style="font-size:9px;letter-spacing:.06em;color:var(--faint,#a8a49b);text-transform:uppercase">Charged</span>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--fg,#1d1c19)">{{ totalChargedFmt }}</span>
@@ -731,10 +737,13 @@
               <div style="min-width:0">
                 <div style="font-size:14.5px;color:var(--fg,#1d1c19);line-height:1.35">{{ row.label }}</div>
                 <div style="font-size:12px;color:var(--muted,#77746c);margin-top:3px">Today: <span style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--fg,#1d1c19)">{{ row.todayCount }}</span></div>
+                <sc-if value="{{ row.hasCaption }}">
+                  <div style="font-size:11.5px;margin-top:3px;color:{{ row.captionColor }}">{{ row.captionLabel }}</div>
+                </sc-if>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex:none">
                 <button onclick="{{ row.onMinus }}" title="Undo an accidental tap" style="min-height:44px;width:44px;padding:0;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--muted,#77746c);font-size:19px;line-height:1">−</button>
-                <button onclick="{{ row.onPlus }}" style="min-height:44px;padding:0 18px;border-radius:10px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:14.5px;font-weight:600">+1</button>
+                <button onclick="{{ row.onPlus }}" style="{{ row.plusStyle }}">+1</button>
               </div>
             </div>
           </sc-for>
@@ -1062,7 +1071,11 @@ class Component extends DCLogic {
     this.api = await import((window.__resources && window.__resources.apiClient) || new URL('./api-client.js', location.href).href);
     await this.api.init();
     try {
-      await this.refresh();
+      // Metrics load alongside commitments (not just on entering the Data
+      // tab) so a pending penalty is visible from the app bar on any screen.
+      // loadMetrics swallows its own errors into metricsError, so a hiccup
+      // here never blocks boot the way a failed refresh() does.
+      await Promise.all([this.refresh(), this.loadMetrics()]);
     } catch (e) {
       const msg = String((e && e.message) || e);
       // A dead session must land on the sign-in gate, and any other boot
@@ -1339,7 +1352,11 @@ class Component extends DCLogic {
     if (this._bumping) return;  // one tap at a time; a queued double-tap double-counts
     this._bumping = true;
     try {
-      const metrics = await this.api.bumpMetric(key, delta);
+      // Best-effort device tz, so an end-of-day penalty (if this metric has
+      // one) closes out at this device's midnight rather than the server's.
+      let tz = null;
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { /* unavailable */ }
+      const metrics = await this.api.bumpMetric(key, delta, tz);
       this.setState({ metrics, metricsError: '' });
     } catch (e) {
       this.setState({ metricsError: String((e && e.message) || e) });
@@ -1400,12 +1417,29 @@ class Component extends DCLogic {
     vm.hasData = !!start;
     vm.startLabel = start || '';
 
-    vm.rows = M.metrics.map(m => ({
-      key: m.key, label: m.label,
-      todayCount: String((series[m.key] || {})[today] || 0),
-      onPlus: () => this.bump(m.key, 1),
-      onMinus: () => this.bump(m.key, -1),
-    }));
+    const pendingAmount = (M.pendingPenalty && M.pendingPenalty.amount) || 0;
+    const plusStyle = isPenalty => ({
+      minHeight: '44px', padding: '0 18px', borderRadius: '10px', border: 'none',
+      background: isPenalty ? 'var(--missed,#a3573a)' : 'var(--accent,#3d6b52)',
+      color: 'var(--accent-fg,#fff)', fontSize: '14.5px', fontWeight: '600',
+    });
+    vm.rows = M.metrics.map(m => {
+      const isPenalty = m.key === 'gaze_goal_broken';
+      return {
+        key: m.key, label: m.label,
+        todayCount: String((series[m.key] || {})[today] || 0),
+        onPlus: () => this.bump(m.key, 1),
+        onMinus: () => this.bump(m.key, -1),
+        plusStyle: plusStyle(isPenalty),
+        // Always-on warning for this one row: every +1 is $1, real money,
+        // charged once today closes — not a mere tally like the others.
+        hasCaption: isPenalty,
+        captionLabel: pendingAmount > 0
+          ? '$' + pendingAmount.toFixed(2) + ' pending — charges at 11:59 PM'
+          : '$1 per tap — charged at day’s end, via Beeminder',
+        captionColor: pendingAmount > 0 ? 'var(--missed,#a3573a)' : 'var(--muted,#77746c)',
+      };
+    });
 
     if (start) {
       vm.graphs = M.metrics.map(m => {
@@ -1574,6 +1608,8 @@ class Component extends DCLogic {
       },
       hasCards: cards.length > 0, noCards: cards.length === 0, cards,
       totalChargedFmt: this.money(S.settings.totalCharged), recipient: S.settings.recipient,
+      hasPendingPenalty: !!(S.metrics && S.metrics.pendingPenalty && S.metrics.pendingPenalty.amount > 0),
+      pendingPenaltyFmt: this.money(S.metrics && S.metrics.pendingPenalty && S.metrics.pendingPenalty.amount),
       apiBaseShown: S.settings.apiBaseUrl,
       detail: (S.view === 'detail' && sel) ? this.detailVM(sel) : null,
       decision: (S.view === 'decision' && sel) ? this.decisionVM(sel) : null,

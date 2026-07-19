@@ -73,6 +73,10 @@ class LapseBody(BaseModel):
 class BumpBody(BaseModel):
     # +1 / -1 on a daily metric tally; anything else is rejected in the route.
     delta: int
+    # Client's IANA timezone (Intl.DateTimeFormat().resolvedOptions().timeZone),
+    # best-effort. Used only to decide when a penalty day's end-of-day sweep
+    # fires; falls back to METRICS_TZ server-side if absent or unrecognized.
+    tz: str | None = None
 
 
 class SettingsPatch(BaseModel):

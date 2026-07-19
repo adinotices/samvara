@@ -338,6 +338,14 @@ METRICS: list[dict[str, Any]] = [
 ]
 _METRIC_KEYS = {m["key"] for m in METRICS}
 
+# ── end-of-day Beeminder penalty on the "goal broken" tally ──────────────────
+# Every +1 here is $1 at stake, but not charged the moment it's tapped: it's
+# deferred until the day closes (device tz if the client sent one, else
+# METRICS_TZ), so an accidental tap can still be undone with -1 before the
+# sweep fires. /v1/tick — already polled every 15 min — is what closes it,
+# the same mechanism that already charges auto-missed commitments.
+PENALTY_METRIC = "gaze_goal_broken"
+
 
 def metrics_today(now: dt.datetime | None = None) -> str:
     """The current calendar day (YYYY-MM-DD) in the configured metrics tz."""
@@ -345,11 +353,36 @@ def metrics_today(now: dt.datetime | None = None) -> str:
     return at.astimezone(ZoneInfo(settings.metrics_tz)).date().isoformat()
 
 
+def _day_end_utc(day: str, tz_name: str | None) -> dt.datetime:
+    """The instant `day` (YYYY-MM-DD) closes — i.e. its next midnight in `tz_name`.
+
+    Falls back to METRICS_TZ if `tz_name` is missing or not a tz the server
+    recognizes (e.g. a client sent garbage or nothing at all).
+    """
+    try:
+        zone = ZoneInfo(tz_name) if tz_name else ZoneInfo(settings.metrics_tz)
+    except Exception:
+        zone = ZoneInfo(settings.metrics_tz)
+    d = dt.date.fromisoformat(day)
+    midnight = dt.datetime(d.year, d.month, d.day, tzinfo=zone)
+    return midnight + dt.timedelta(days=1)
+
+
+def _penalty_note(count: int, day: str) -> str:
+    return f"Samvara: penalty for looking at women with sexual desire ({count}x on {day})"
+
+
 def _metrics_payload() -> dict[str, Any]:
+    today = metrics_today()
+    series = store.metric_series()
+    count = series.get(PENALTY_METRIC, {}).get(today, 0)
+    penalty_row = store.get_penalty_day(today)
+    charged = penalty_row["charged_count"] if penalty_row else 0
     return {
         "metrics": METRICS,
-        "series": store.metric_series(),
-        "today": metrics_today(),
+        "series": series,
+        "today": today,
+        "pendingPenalty": {"amount": max(0, count - charged)},
     }
 
 
@@ -364,7 +397,10 @@ async def bump_metric(key: str, body: BumpBody) -> dict[str, Any]:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No metric {key!r}.")
     if body.delta not in (1, -1):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "delta must be 1 or -1.")
-    store.bump_metric(key, metrics_today(), body.delta)
+    today = metrics_today()
+    store.bump_metric(key, today, body.delta)
+    if key == PENALTY_METRIC:
+        store.upsert_penalty_tz(today, body.tz or settings.metrics_tz)
     return _metrics_payload()
 
 
@@ -406,4 +442,39 @@ async def tick() -> dict[str, Any]:
                 "id": cid, "amount": amount, "charge": charge.as_dict(),
             })
 
-    return {"charged": charged_list, "charged_count": len(charged_list), "errors": errors}
+    # Penalty sweep: charge the "goal broken" tally for any day that has
+    # closed (past midnight in its recorded tz) and isn't fully billed yet.
+    penalties_charged: list[dict[str, Any]] = []
+    penalty_errors: list[dict[str, Any]] = []
+    now = dt.datetime.now(dt.timezone.utc)
+
+    for pending in store.pending_penalties(PENALTY_METRIC):
+        day = pending["day"]
+        async with _charge_lock:
+            # Recompute from fresh state: a concurrent tick or a same-day tap
+            # may have changed the count or charged_count while we waited.
+            row = store.get_penalty_day(day)
+            tz = (row["tz"] if row else None) or pending["tz"]
+            charged = row["charged_count"] if row else 0
+            count = store.metric_count(PENALTY_METRIC, day)
+            if count <= charged or now < _day_end_utc(day, tz):
+                continue
+            amount = count - charged
+            try:
+                charge = await beeminder.charge(amount, _penalty_note(count, day))
+            except beeminder.ChargeError as e:
+                penalty_errors.append({"day": day, "error": str(e)})
+                continue
+            with store.lock:
+                store.mark_penalty_charged(day, count)
+                store.add_total_charged(amount)
+            penalties_charged.append({
+                "day": day, "amount": amount, "charge": charge.as_dict(),
+            })
+
+    return {
+        "charged": charged_list, "charged_count": len(charged_list), "errors": errors,
+        "penalties_charged": penalties_charged,
+        "penalties_charged_count": len(penalties_charged),
+        "penalty_errors": penalty_errors,
+    }

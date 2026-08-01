@@ -104,6 +104,19 @@ class Store:
                     (json.dumps(DEFAULT_SETTINGS),),
                 )
 
+    def ping(self) -> bool:
+        """Cheap round-trip proving the connection is actually usable — for
+        readiness, not liveness. A process can be "up" (import succeeded, the
+        event loop is running) while its database is not: a locked WAL file,
+        a full disk, a volume that failed to mount. Liveness alone can't see
+        that; this is what distinguishes readiness from it."""
+        try:
+            with self.lock:
+                self._conn.execute("SELECT 1").fetchone()
+            return True
+        except sqlite3.Error:
+            return False
+
     # ── commitments ──────────────────────────────────────────────────────
     def list_commitments(self) -> list[Commitment]:
         with self.lock:

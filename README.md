@@ -242,7 +242,8 @@ session token from the OTP flow (what the browser uses) or the static
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/v1/health` | Liveness (no auth). Effective config included only with a valid token. |
+| GET | `/v1/health` | Liveness (no auth): is the process up. Effective config included only with a valid token. |
+| GET | `/v1/health/ready` | Readiness (no auth): is the database reachable. Returns 503 if not — this is what a load balancer or orchestrator should point at, not `/v1/health`. |
 | POST | `/v1/auth/send-code` | Email a one-time sign-in code to the server's `AUTH_EMAIL`. Always 204. |
 | POST | `/v1/auth/verify-code` | Exchange `{email, code}` for a 30-day session token. |
 | POST | `/v1/auth/sign-out` | Revoke the presented session token server-side. Always 204. |

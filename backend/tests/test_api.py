@@ -122,3 +122,23 @@ def test_commitments_listed_closest_deadline_first():
     names = [c["name"] for c in client.get("/v1/commitments", headers=HDR).json()]
     assert names[0] == "Near"
     assert far and mid  # ids used; silence linters
+
+
+# ── readiness ─────────────────────────────────────────────────────────────────
+def test_readiness_ok_when_db_reachable():
+    r = client.get("/v1/health/ready")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "checks": {"db": True}}
+
+
+def test_readiness_503_when_db_unreachable(monkeypatch):
+    monkeypatch.setattr(store, "ping", lambda: False)
+    r = client.get("/v1/health/ready")
+    assert r.status_code == 503
+    assert r.json() == {"status": "unavailable", "checks": {"db": False}}
+
+
+def test_readiness_requires_no_auth():
+    # No Authorization header at all — must not 401.
+    r = client.get("/v1/health/ready", headers={})
+    assert r.status_code == 200

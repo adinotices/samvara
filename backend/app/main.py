@@ -170,8 +170,12 @@ async def request_access(body: AccessRequestBody):
 # ── health (no auth — lets a load balancer / cron probe cheaply) ──────────────
 @app.get("/v1/health")
 async def health(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    """Anonymous callers get liveness only; the effective config (whether real
-    charges are armed, the cap) is visible only with a valid token."""
+    """Liveness only: is the process up and answering HTTP at all. Deliberately
+    does not touch the database — a health check that depends on the thing it's
+    supposed to detect the failure of is a bad health check. See /v1/health/ready
+    for "can this instance actually serve traffic". Anonymous callers get
+    liveness only; the effective config (whether real charges are armed, the
+    cap) is visible only with a valid token."""
     out: dict[str, Any] = {"status": "ok"}
     if token_is_valid(authorization):
         out.update({
@@ -181,6 +185,22 @@ async def health(authorization: str | None = Header(default=None)) -> dict[str, 
             "max_charge_usd": settings.max_charge,
         })
     return out
+
+
+@app.get("/v1/health/ready")
+async def readiness(response: Response) -> dict[str, Any]:
+    """Readiness: can this instance actually serve traffic right now.
+
+    Liveness answers "is the process up"; this answers "is the database it
+    depends on reachable" — a locked WAL file, a full disk, or an unmounted
+    volume all leave the process alive but unable to do anything useful.
+    No auth: this is meant for a load balancer or orchestrator, which won't
+    have a token, and "the DB is unreachable" isn't sensitive on its own.
+    """
+    db_ok = store.ping()
+    if not db_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "ok" if db_ok else "unavailable", "checks": {"db": db_ok}}
 
 
 # ── reads ─────────────────────────────────────────────────────────────────────

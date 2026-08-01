@@ -11,9 +11,13 @@ the system that moves real money, so the safety rails live here:
 """
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from .config import settings
+
+log = logging.getLogger("samvara.beeminder")
 
 API_BASE = "https://www.beeminder.com/api/v1/"
 
@@ -78,11 +82,23 @@ async def charge(amount: float, note: str) -> ChargeResult:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(url, data=params)
     except httpx.HTTPError as e:  # network-level failure
+        log.error("beeminder charge request failed", extra={
+            "amount": amount, "dryrun": settings.beeminder_dryrun, "error": str(e),
+        })
         raise ChargeError(f"Beeminder request failed: {e}") from e
 
     if resp.status_code >= 400:
+        # Not the note: it can carry a commitment name or, for the penalty
+        # metric, a description of the tracked behavior — keep that out of logs.
+        log.error("beeminder charge rejected", extra={
+            "amount": amount, "dryrun": settings.beeminder_dryrun,
+            "status": resp.status_code,
+        })
         raise ChargeError(f"Beeminder charge failed ({resp.status_code}): {resp.text}")
 
+    log.info("beeminder charge succeeded", extra={
+        "amount": amount, "dryrun": settings.beeminder_dryrun,
+    })
     body = resp.json() if resp.content else {}
     return ChargeResult(
         charged=not settings.beeminder_dryrun,

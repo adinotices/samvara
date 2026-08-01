@@ -29,6 +29,12 @@ class Settings:
     # SQLite file. Put it on a persistent volume in production.
     db_path: str = os.environ.get("SAMVARA_DB", "samvara.db")
 
+    # ── logging ──────────────────────────────────────────────────────────
+    # Standard level names (DEBUG/INFO/WARNING/ERROR/CRITICAL). JSON lines to
+    # stdout — see logging_config.py — so a hosting platform's log collector
+    # can parse fields (request_id, path, status) instead of grepping text.
+    log_level: str = os.environ.get("LOG_LEVEL", "INFO")
+
     # ── auth ─────────────────────────────────────────────────────────────
     # "none"  -> no auth (local dev only).
     # "token" -> every request must send  Authorization: Bearer <API_TOKEN>.

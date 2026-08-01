@@ -25,13 +25,14 @@ import logging
 import secrets
 import sqlite3
 import time
+import uuid
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, beeminder, ratchet
+from . import auth, beeminder, logging_config, ratchet
 from .config import settings
 from .security import (
     AccessRequestBody,
@@ -47,9 +48,42 @@ from .security import (
 )
 from .store import store
 
+logging_config.setup(settings.log_level)
 log = logging.getLogger("samvara")
 
 app = FastAPI(title="Samvara API", version="1.0.0")
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Every log line emitted while handling this request carries this id
+    (see logging_config._RequestIdFilter), and it's echoed back in the
+    response so a client-reported bug can be grepped straight out of logs.
+
+    Also emits the access-log line itself (method, path, status, duration) —
+    uvicorn's own access log runs outside this middleware and can't carry the
+    request id, so it's disabled in logging_config.setup() in favor of this."""
+    rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    token = logging_config.request_id_ctx.set(rid)
+    start = time.monotonic()
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+        log.info("request", extra={
+            "method": request.method, "path": request.url.path,
+            "status": response.status_code, "duration_ms": duration_ms,
+        })
+        response.headers["X-Request-Id"] = rid
+        return response
+    except Exception:
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+        log.exception("request raised", extra={
+            "method": request.method, "path": request.url.path,
+            "duration_ms": duration_ms,
+        })
+        raise
+    finally:
+        logging_config.request_id_ctx.reset(token)
 
 _origins = settings.allowed_origins
 if not _origins:

@@ -124,6 +124,24 @@ def test_commitments_listed_closest_deadline_first():
     assert far and mid  # ids used; silence linters
 
 
+# ── request-id middleware ────────────────────────────────────────────────────
+def test_request_id_echoed_when_client_supplies_one():
+    r = client.get("/v1/health", headers={"X-Request-Id": "client-supplied-123"})
+    assert r.headers["x-request-id"] == "client-supplied-123"
+
+
+def test_request_id_generated_when_absent():
+    r = client.get("/v1/health")
+    rid = r.headers.get("x-request-id")
+    assert rid and rid != "-"
+
+
+def test_request_id_differs_across_requests():
+    a = client.get("/v1/health").headers["x-request-id"]
+    b = client.get("/v1/health").headers["x-request-id"]
+    assert a != b
+
+
 # ── readiness ─────────────────────────────────────────────────────────────────
 def test_readiness_ok_when_db_reachable():
     r = client.get("/v1/health/ready")

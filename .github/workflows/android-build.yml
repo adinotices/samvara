@@ -1,0 +1,37 @@
+name: Android build
+
+# Compiles the shell on every push so a break surfaces here, not on the next
+# person's machine. GitHub's ubuntu-latest runners ship a preinstalled Android
+# SDK (ANDROID_HOME) that's kept current with recent compileSdk levels, so no
+# separate SDK-provisioning action is needed — only local.properties has to
+# point at it, same as any local dev machine.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Point the project at the runner's Android SDK
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: gradlew assembleDebug
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon

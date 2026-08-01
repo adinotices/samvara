@@ -1,0 +1,51 @@
+name: Security scans
+
+# Two independent, non-blocking-to-add checks:
+#   - pip-audit: known CVEs in backend/requirements.txt, checked against the
+#     live advisory database on every run (deliberately unpinned — a vuln
+#     scanner running against yesterday's data defeats the point).
+#   - gitleaks: scans full git history for committed secrets. Installed via
+#     `go install` against its actual module path (still zricethezav/gitleaks
+#     upstream even though the project now lives at github.com/gitleaks/gitleaks —
+#     the gitleaks/gitleaks/v8 path resolves but its go.mod disagrees and the
+#     build fails) rather than the gitleaks-action marketplace wrapper, which
+#     gates private-repo use behind a commercial license.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit backend dependencies
+        run: pip-audit -r backend/requirements.txt
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, not just this ref
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Scan for committed secrets
+        run: "$(go env GOPATH)/bin/gitleaks detect --source=. -v"

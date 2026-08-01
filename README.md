@@ -356,7 +356,9 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
 The build needs a full JDK (17+) and an Android SDK at the path in
-`android/local.properties`. The APK is debug-signed, which is fine for
+`android/local.properties` — this file is per-machine and git-ignored, so
+create it yourself (`sdk.dir=/path/to/Android/sdk`) or let Android Studio
+generate it on first open. The APK is debug-signed, which is fine for
 personal sideloading; installs upgrade in place as long as the same machine's
 debug keystore signs them. On first launch: accept the notification prompt,
 sign in, and (optionally) set battery usage to Unrestricted so Doze can't

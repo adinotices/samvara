@@ -1,6 +1,17 @@
+# Android shell build artifacts.
+#
+# These patterns are relative to THIS file (android/), not the repo root. They
+# were previously written as `android/app/build/` etc., which .gitignore reads
+# as `android/android/app/build/` — matching nothing, so the entire build output
+# and Gradle cache were tracked.
+local.properties
+.gradle/
+build/
+app/build/
 
-# Android shell build artifacts
-android/local.properties
-android/.gradle/
-android/build/
-android/app/build/
+# Release signing material. The upload keystore is generated and held by the
+# app owner and must never enter the repo — losing control of it means losing
+# the ability to ship Play updates.
+*.jks
+*.keystore
+keystore.properties

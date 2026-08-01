@@ -3,6 +3,27 @@
 Companion to [`APP_STORE_READINESS.md`](./APP_STORE_READINESS.md). That document
 says *what needs to be true*. This one says *who does what, in what order*.
 
+## Decisions taken
+
+| | Decision | Answer | Date |
+| --- | --- | --- | --- |
+| **D-1** | Money in v1? | **Yes — stakes ship in v1** | 2026-08-01 |
+| **D-4** | Client framework | **React Native / Expo** | 2026-08-01 |
+
+**Consequences of D-1.** The payments track is in scope, so **D-2** (payment
+rail) and **D-3** (where forfeited money goes) move from "answer when reached" to
+"answer early" — D-3 in particular gates counsel (P3-2) and can't be designed
+around. Plan on ~6–8 months to submission rather than 4–6, and expect the money
+model to be the hardest part of App Review. Everything in 1D is now on the
+critical path rather than optional, and P3-7 (Stripe underwriting or Beeminder's
+written OK) becomes a long-lead item alongside P3-1 through P3-4.
+
+**Consequences of D-4.** 1G proceeds as a React Native port targeting both
+platforms. The Android WebView shell is now in maintenance-only mode — no further
+investment beyond keeping it working until the RN build replaces it.
+
+---
+
 Split three ways:
 
 - **[Part 1](#part-1--i-can-build-this-now)** — work I can do with no input from you. Correct
@@ -216,6 +237,10 @@ You can answer these as a numbered list and I'll start.
 
 ### D-1. Does real money ship in v1? ⭐ *biggest single decision*
 
+> **ANSWERED 2026-08-01: yes — stakes ship in v1.** The recommendation below is
+> kept for the record; the reasoning against it (the stake *is* the mechanism)
+> is sound. D-2 and D-3 are now urgent rather than deferrable.
+
 **Recommendation: no.** Ship the ratchet, streaks, tracking, and notifications
 first; add stakes in v2.
 
@@ -256,6 +281,9 @@ money to third parties can implicate money-transmitter licensing. **Get counsel
 on this specific question (P3-2) before I build anything that assumes an answer.**
 
 ### D-4. Client framework? ⭐ *blocks the largest chunk of work*
+
+> **ANSWERED 2026-08-01: React Native / Expo.** 1G proceeds as an RN port for
+> both platforms. The Android WebView shell is maintenance-only from here.
 
 React Native/Expo · Flutter · native Swift + keep Java Android · Capacitor.
 

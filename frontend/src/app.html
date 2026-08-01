@@ -481,7 +481,7 @@
             <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Your email</span><input value="{{ auth.reqEmail }}" oninput="{{ auth.setReqEmail }}" type="email" placeholder="you@example.com" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:15px;min-height:46px"></label>
             <label style="display:flex;flex-direction:column;gap:7px"><span style="font-size:12px;color:var(--muted,#77746c)">Message</span><textarea value="{{ auth.reqMsg }}" oninput="{{ auth.setReqMsg }}" rows="3" placeholder="A little about why you'd like access…" style="width:100%;padding:12px 14px;border:1px solid var(--line,#e4e0d8);border-radius:10px;background:var(--bg,#f4f2ee);color:var(--fg,#1d1c19);font-size:14px;min-height:84px;resize:vertical;line-height:1.5"></textarea></label>
             <sc-if value="{{ auth.hasReqError }}"><div style="font-size:12.5px;color:var(--missed,#a3573a)">{{ auth.reqError }}</div></sc-if>
-            <button onclick="{{ auth.sendRequest }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">Send request</button>
+            <button onclick="{{ auth.sendRequest }}" style="min-height:48px;border-radius:10px;background:var(--accent,#3d6b52);border:none;color:var(--accent-fg,#fff);font-size:15px;font-weight:600">{{ auth.reqSubmitLabel }}</button>
             <button onclick="{{ auth.backToEmail }}" style="align-self:center;background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;min-height:40px">← Back to sign in</button>
           </sc-if>
 
@@ -1047,7 +1047,7 @@ class Component extends DCLogic {
     // ── auth gate ──
     authed: (() => { try { return localStorage.getItem('samvara.authed') === '1'; } catch (e) { return false; } })(),
     authView: 'email', authEmail: '', authCode: '', sentCode: '', authError: '', authNotice: '',
-    reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '',
+    reqName: '', reqEmail: '', reqMsg: '', reqError: '', reqSentTo: '', reqSubmitting: false,
     // Persisted so an explicit Dark/Light toggle survives reloads (the
     // Android shell fetches a fresh page on every cold start, which reset an
     // unpersisted toggle). Absent that override, follow sunset/sunrise (see
@@ -1608,6 +1608,19 @@ class Component extends DCLogic {
     }
     this.setState({ authView: 'code', authCode: '', authError: '', authNotice: '' });
   }
+  async doSendRequest(name, email, message) {
+    try {
+      const res = await fetch(this.authApiRoot() + '/v1/access-requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, message }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      this.setState({ reqError: 'Could not send the request. Try again in a minute.', reqSubmitting: false });
+      return;
+    }
+    this.setState({ authView: 'requestDone', reqSentTo: email, reqName: '', reqMsg: '', reqSubmitting: false });
+  }
   async doVerify() {
     const S = this.state;
     if (S.authCode.length !== 6) return this.setState({ authError: 'Enter the 6-digit code.' });
@@ -1652,13 +1665,16 @@ class Component extends DCLogic {
       setReqName: e => this.setState({ reqName: e.target.value, reqError: '' }),
       setReqEmail: e => this.setState({ reqEmail: e.target.value, reqError: '' }),
       setReqMsg: e => this.setState({ reqMsg: e.target.value, reqError: '' }),
+      reqSubmitting: S.reqSubmitting,
+      reqSubmitLabel: S.reqSubmitting ? 'Sending…' : 'Send request',
       sendRequest: () => {
         const s = this.state;
+        if (s.reqSubmitting) return;
         if (!s.reqName.trim()) return this.setState({ reqError: 'Please add your name.' });
         if (!this.EMAIL_RE.test(s.reqEmail.trim())) return this.setState({ reqError: 'Enter a valid email so I can reply.' });
         if (!s.reqMsg.trim()) return this.setState({ reqError: 'Add a short message.' });
-        // Static build: the request is acknowledged but not delivered anywhere.
-        this.setState({ authView: 'requestDone', reqSentTo: s.reqEmail.trim(), reqName: '', reqMsg: '' });
+        this.setState({ reqSubmitting: true, reqError: '' });
+        this.doSendRequest(s.reqName.trim(), s.reqEmail.trim(), s.reqMsg.trim());
       },
     };
   }

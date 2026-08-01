@@ -66,21 +66,22 @@ def create_session(email: str) -> str:
     return token
 
 
-async def send_otp_email(email: str, code: str) -> None:
+async def send_email(to: str, subject: str, text: str) -> None:
     if not settings.resend_api_key:
         raise RuntimeError("RESEND_API_KEY is not configured on the server.")
     async with httpx.AsyncClient(timeout=10.0) as client:
         r = await client.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={
-                "from": settings.email_from,
-                "to": [email],
-                "subject": "Your Samvara login code",
-                "text": (
-                    f"Your Samvara login code is: {code}\n\n"
-                    "It expires in 10 minutes. If you didn't request this, ignore it."
-                ),
-            },
+            json={"from": settings.email_from, "to": [to], "subject": subject, "text": text},
         )
         r.raise_for_status()
+
+
+async def send_otp_email(email: str, code: str) -> None:
+    await send_email(
+        email,
+        "Your Samvara login code",
+        f"Your Samvara login code is: {code}\n\n"
+        "It expires in 10 minutes. If you didn't request this, ignore it.",
+    )

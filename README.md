@@ -246,6 +246,7 @@ session token from the OTP flow (what the browser uses) or the static
 | POST | `/v1/auth/send-code` | Email a one-time sign-in code to the server's `AUTH_EMAIL`. Always 204. |
 | POST | `/v1/auth/verify-code` | Exchange `{email, code}` for a 30-day session token. |
 | POST | `/v1/auth/sign-out` | Revoke the presented session token server-side. Always 204. |
+| POST | `/v1/access-requests` | `{name, email, message}` from the sign-in gate's denied path. No auth. Persisted, then a best-effort notification email to `AUTH_EMAIL`. Always 204. |
 | GET | `/v1/commitments` | List all commitments. |
 | GET | `/v1/commitments/{id}` | One commitment. |
 | POST | `/v1/commitments` | Create `{name, base_days, base_stake}`. |

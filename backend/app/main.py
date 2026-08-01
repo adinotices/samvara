@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import secrets
 import sqlite3
 import time
 from typing import Any
@@ -33,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import auth, beeminder, ratchet
 from .config import settings
 from .security import (
+    AccessRequestBody,
     BumpBody,
     ChooseNextBody,
     CreateBody,
@@ -137,6 +139,32 @@ async def sign_out(authorization: str | None = Header(default=None)):
         scheme, _, token_value = authorization.partition(" ")
         if scheme.lower() == "bearer" and token_value:
             store.delete_session(auth.sha256(token_value))
+
+
+@app.post("/v1/access-requests", status_code=204, response_class=Response)
+async def request_access(body: AccessRequestBody):
+    """"Request access" from the sign-in gate's denied path.
+
+    No auth (the requester by definition doesn't have any yet). The request is
+    persisted first — that's the durable record, and it's what makes the UI's
+    "I'll reply soon" true — then a best-effort notification email goes to
+    AUTH_EMAIL. A failed email never loses the request; it's still in the table.
+    """
+    rid = "req_" + secrets.token_hex(6)
+    now = int(time.time() * 1000)
+    name = body.name.strip()
+    email = body.email.strip()
+    message = body.message.strip()
+    store.save_access_request(rid, name, email, message, now)
+    if settings.auth_email:
+        try:
+            await auth.send_email(
+                settings.auth_email,
+                f"Samvara access request from {name}",
+                f"Name: {name}\nEmail: {email}\n\n{message}",
+            )
+        except Exception:
+            log.exception("access-request notification email failed (request %s persisted)", rid)
 
 
 # ── health (no auth — lets a load balancer / cron probe cheaply) ──────────────

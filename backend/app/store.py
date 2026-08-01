@@ -84,6 +84,19 @@ class Store:
                        charged_count INTEGER NOT NULL DEFAULT 0
                    )"""
             )
+            # "Request access" submissions from the sign-in gate's denied path.
+            # Persisted so the promise the UI makes ("I'll reply soon") is true;
+            # notified best-effort by email to AUTH_EMAIL, but the row is the
+            # durable record even if that email fails to send.
+            self._conn.execute(
+                """CREATE TABLE IF NOT EXISTS access_requests (
+                       id         TEXT PRIMARY KEY,
+                       name       TEXT NOT NULL,
+                       email      TEXT NOT NULL,
+                       message    TEXT NOT NULL,
+                       created_at INTEGER NOT NULL
+                   )"""
+            )
             row = self._conn.execute("SELECT v FROM kv WHERE k='settings'").fetchone()
             if row is None:
                 self._conn.execute(
@@ -231,6 +244,27 @@ class Store:
         return [
             {"day": day, "count": count, "tz": tz, "charged_count": charged}
             for day, count, tz, charged in rows
+        ]
+
+    # ── access requests (sign-in gate's "request access" form) ────────────
+    def save_access_request(self, rid: str, name: str, email: str, message: str,
+                             created_at: int) -> None:
+        with self.lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO access_requests (id, name, email, message, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (rid, name, email, message, created_at),
+            )
+
+    def list_access_requests(self) -> list[dict[str, Any]]:
+        with self.lock:
+            rows = self._conn.execute(
+                "SELECT id, name, email, message, created_at FROM access_requests"
+                " ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {"id": r[0], "name": r[1], "email": r[2], "message": r[3], "created_at": r[4]}
+            for r in rows
         ]
 
     # ── OTP codes (hashed; one active code per email) ─────────────────────

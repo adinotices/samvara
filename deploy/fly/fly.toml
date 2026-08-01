@@ -1,9 +1,20 @@
 # Fly.io deployment. From the repo root:
 #
 #   fly launch --no-deploy --copy-config --dockerfile backend/Dockerfile
+#
+#   # Postgres (recommended — see backend/README / the multi-tenant port notes
+#   # for why SQLite doesn't hold up multi-tenant). Either:
+#   #   fly postgres create --name samvara-db && fly postgres attach samvara-db
+#   #     (this sets the DATABASE_URL secret for you)
+#   # or point DATABASE_URL at any managed Postgres (Neon, Supabase, RDS, ...):
+#   fly secrets set DATABASE_URL=postgresql+psycopg://...
+#
+#   # SQLite fallback, only if you're deliberately not on Postgres yet:
 #   fly volumes create samvara_data --size 1
+#
 #   fly secrets set API_TOKEN=... BEEMINDER_TOKEN=... BEEMINDER_USER=... \
-#                   ALLOWED_ORIGINS=https://samvara.app BEEMINDER_DRYRUN=true
+#                   ALLOWED_ORIGINS=https://samvara.app BEEMINDER_DRYRUN=true \
+#                   AUTH_EMAIL=you@example.com RESEND_API_KEY=...
 #   fly deploy
 #
 # Adjust `app` and `primary_region` before launching.
@@ -18,6 +29,9 @@ primary_region = "iad"
 
 [env]
   AUTH_MODE = "token"
+  # "invite" until you've deliberately decided to open signup — this app
+  # charges real money. See SIGNUP_MODE in .env.example.
+  SIGNUP_MODE = "invite"
   # Both origins the frontend may be served from: the custom domain and the
   # bare GitHub Pages origin (used until samvara.app DNS is configured).
   ALLOWED_ORIGINS = "https://samvara.app,https://adinotices.github.io"
@@ -25,10 +39,13 @@ primary_region = "iad"
   MIN_STAKE = "1.00"
   MAX_CHARGE_USD = "50.00"
   GRACE_HOURS = "24"
+  # Ignored once the DATABASE_URL secret is set (Postgres) — kept as the
+  # fallback path for a SQLite deployment.
   SAMVARA_DB = "/data/samvara.db"
 
-# Persistent SQLite volume. Keep a single machine (min/max 1) so the file store
-# is owned by one process; scaling out needs a shared DB instead.
+# Only load-bearing for the SQLite fallback path. On Postgres (DATABASE_URL
+# set as a secret, above), delete this block — the database lives with your
+# Postgres provider, not on this machine's volume.
 [[mounts]]
   source = "samvara_data"
   destination = "/data"

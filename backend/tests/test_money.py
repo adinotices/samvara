@@ -8,7 +8,8 @@ These pin the invariants that make real charges safe to arm:
     lapse twice (including a double-clicked confirm),
   * the ledger always balances: sum of charges == totalCharged == sum of
     charged history entries,
-  * cap/boundary/garbage-input edges behave predictably.
+  * cap/boundary/garbage-input edges behave predictably,
+  * one user's activity can never move another user's money.
 
 beeminder.charge is faked in-process, so no network and no money.
 
@@ -35,14 +36,24 @@ os.environ.setdefault("API_TOKEN", "static-cron-token")
 os.environ.setdefault("AUTH_EMAIL", "owner@example.com")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import delete, update as sa_update  # noqa: E402
 
-from app import beeminder, main, ratchet  # noqa: E402
+from app import beeminder, db, main, ratchet  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.store import store  # noqa: E402
 
+from _helpers import signin  # noqa: E402
+
 client = TestClient(app)
-HDR = {"Authorization": f"Bearer {settings.api_token}"}
+TEST_EMAIL = "money-tests@example.com"
+# settings.signup_mode is a frozen singleton for the whole pytest session, so
+# this file can't rely on SIGNUP_MODE=open actually being in effect — see
+# test_api.py. Explicitly inviting is correct under either mode.
+store.add_invite(TEST_EMAIL, note=None)
+HDR = signin(client, TEST_EMAIL)
+USER_ID = store.get_user_by_email(TEST_EMAIL)["id"]
+TICK_HDR = {"Authorization": f"Bearer {settings.api_token}"}  # /v1/tick is a system route
 
 CHARGES: list[float] = []  # amounts the fake charge accepted
 
@@ -75,11 +86,11 @@ def _clean(monkeypatch):
     # asyncio.Lock binds to the first event loop that touches it; each
     # asyncio.run() here is a fresh loop, so give each test a fresh lock.
     monkeypatch.setattr(main, "_charge_lock", asyncio.Lock())
-    with store.lock, store._conn:
-        store._conn.execute("DELETE FROM commitments")
-        store._conn.execute("DELETE FROM metric_days")
-        store._conn.execute("DELETE FROM penalty_days")
-    store.update_settings({"totalCharged": 0})
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(delete(db.commitments).where(db.commitments.c.user_id == USER_ID))
+        conn.execute(delete(db.metric_days).where(db.metric_days.c.user_id == USER_ID))
+        conn.execute(delete(db.penalty_days).where(db.penalty_days.c.user_id == USER_ID))
+    store.update_settings(USER_ID, {"totalCharged": 0})
     # Debounce off by default so sequential test actions don't trip it; the
     # debounce test switches it back on.
     monkeypatch.setattr(settings, "lapse_debounce_s", 0.0)
@@ -97,12 +108,12 @@ def mk(name="Goal", days=3, stake=5.0) -> dict:
 
 def backdate(cid: str) -> None:
     """Rewrite the current rung so its grace window expired an hour ago."""
-    cm = store.get_commitment(cid)
+    cm = store.get_commitment(USER_ID, cid)
     r = cm["current_rung"]
     due = ratchet.now_ms() - settings.grace_ms - ratchet.HOUR_MS
     r["start"] = ratchet.iso_ms(due - r["days"] * ratchet.DAY_MS)
     r["due"] = ratchet.iso_ms(due)
-    store.update_commitment(cm)
+    store.update_commitment(USER_ID, cm)
 
 
 def total_charged() -> float:
@@ -151,7 +162,7 @@ def test_tick_reports_error_and_still_processes_others(monkeypatch):
     backdate(b["id"])
     a_before = snapshot(a["id"])
     monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={7.0}))
-    out = client.post("/v1/tick", headers=HDR).json()
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
     # A's outage is isolated: reported, untouched, retried by the next tick.
     assert [e["id"] for e in out["errors"]] == [a["id"]]
     assert snapshot(a["id"]) == a_before
@@ -201,8 +212,8 @@ def test_repeated_ticks_charge_once(monkeypatch):
     cm = mk(stake=5.0)
     backdate(cm["id"])
     monkeypatch.setattr(beeminder, "charge", fake_charge())
-    first = client.post("/v1/tick", headers=HDR).json()
-    second = client.post("/v1/tick", headers=HDR).json()
+    first = client.post("/v1/tick", headers=TICK_HDR).json()
+    second = client.post("/v1/tick", headers=TICK_HDR).json()
     assert first["charged_count"] == 1 and second["charged_count"] == 0
     assert CHARGES == [5.0] and total_charged() == 5.0
 
@@ -233,7 +244,7 @@ def test_ledger_balances_across_mixed_activity(monkeypatch):
     client.post(f"/v1/commitments/{b['id']}/choose-next", headers=HDR,
                 json={"days": 3, "stake": 3.0})
     backdate(b["id"])
-    client.post("/v1/tick", headers=HDR)
+    client.post("/v1/tick", headers=TICK_HDR)
     # A dry-run preview must move nothing.
     client.post(f"/v1/commitments/{a['id']}/slip", headers=HDR, json={"dryRun": True})
 
@@ -283,6 +294,35 @@ def test_is_past_grace_exact_boundary_is_not_past():
     assert ratchet.is_past_grace(cm, settings.grace_ms, at_ms=end + 1) is True
 
 
+# ── multi-tenant: one user's activity can't move another user's money ───────
+def test_tick_only_charges_the_owning_users_ledger(monkeypatch):
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    store.add_invite("money-tests-other@example.com", note=None)
+    other_hdr = signin(client, "money-tests-other@example.com")
+    other_id = store.get_user_by_email("money-tests-other@example.com")["id"]
+
+    mine = mk("Mine", stake=5.0)
+    r = client.post("/v1/commitments", headers=other_hdr,
+                    json={"name": "Theirs", "base_days": 3, "base_stake": 7.0})
+    theirs_id = r.json()["id"]
+    backdate(mine["id"])
+    cm = store.get_commitment(other_id, theirs_id)
+    r2 = cm["current_rung"]
+    due = ratchet.now_ms() - settings.grace_ms - ratchet.HOUR_MS
+    r2["start"] = ratchet.iso_ms(due - r2["days"] * ratchet.DAY_MS)
+    r2["due"] = ratchet.iso_ms(due)
+    store.update_commitment(other_id, cm)
+
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
+    assert sorted(CHARGES) == [5.0, 7.0]
+    assert total_charged() == 5.0  # mine only
+    other_settings = client.get("/v1/settings", headers=other_hdr).json()
+    assert other_settings["totalCharged"] == 7.0  # theirs only
+
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(delete(db.commitments).where(db.commitments.c.user_id == other_id))
+
+
 # ── end-of-day "goal broken" penalty (deferred Beeminder charge) ─────────────
 # The tally is keyed to *today* (the server clock rules, per metrics_today),
 # so to simulate a day that has closed these tests relabel the bookkeeping
@@ -293,13 +333,19 @@ def test_is_past_grace_exact_boundary_is_not_past():
 # excludes it just like a real pre-feature day would be. PENALTY_START_DAY
 # itself already shipped, so it's always safely in the past.
 def backdate_penalty_day(new_day=main.PENALTY_START_DAY) -> str:
-    today = main.metrics_today()
-    with store.lock, store._conn:
-        store._conn.execute(
-            "UPDATE metric_days SET day=? WHERE metric='gaze_goal_broken' AND day=?",
-            (new_day, today))
-        store._conn.execute(
-            "UPDATE penalty_days SET day=? WHERE day=?", (new_day, today))
+    today = main.metrics_today(settings.metrics_tz)
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(
+            sa_update(db.metric_days)
+            .where(db.metric_days.c.user_id == USER_ID,
+                   db.metric_days.c.metric == "gaze_goal_broken", db.metric_days.c.day == today)
+            .values(day=new_day)
+        )
+        conn.execute(
+            sa_update(db.penalty_days)
+            .where(db.penalty_days.c.user_id == USER_ID, db.penalty_days.c.day == today)
+            .values(day=new_day)
+        )
     return new_day
 
 
@@ -315,7 +361,7 @@ def test_goal_broken_bump_does_not_charge_immediately(monkeypatch):
 
 def test_goal_broken_bump_without_tz_falls_back_to_metrics_tz():
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1})
-    row = store.get_penalty_day(main.metrics_today())
+    row = store.get_penalty_day(USER_ID, main.metrics_today(settings.metrics_tz))
     assert row["tz"] == settings.metrics_tz
 
 
@@ -326,7 +372,7 @@ def test_goal_broken_not_charged_until_day_closes(monkeypatch):
     # Relabel onto a day far in the future so its midnight can't have passed
     # regardless of what time this test happens to run.
     backdate_penalty_day("2099-01-01")
-    out = client.post("/v1/tick", headers=HDR).json()
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
     assert out["penalties_charged_count"] == 0
     assert CHARGES == []
 
@@ -337,14 +383,14 @@ def test_goal_broken_charges_net_count_once_day_closes(monkeypatch):
         client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
                     json={"delta": 1, "tz": "UTC"})
     day = backdate_penalty_day()
-    out = client.post("/v1/tick", headers=HDR).json()
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
     assert out["penalties_charged_count"] == 1
     entry = out["penalties_charged"][0]
     assert entry["day"] == day and entry["amount"] == 3
     assert "looking at women with sexual desire" in entry["charge"]["note"]
     assert CHARGES == [3.0] and total_charged() == 3.0
     # Idempotent: a repeated tick doesn't charge the same day twice.
-    out2 = client.post("/v1/tick", headers=HDR).json()
+    out2 = client.post("/v1/tick", headers=TICK_HDR).json()
     assert out2["penalties_charged_count"] == 0
     assert CHARGES == [3.0]
 
@@ -355,7 +401,7 @@ def test_goal_broken_undo_before_close_reduces_the_charge(monkeypatch):
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": -1, "tz": "UTC"})
     backdate_penalty_day()
-    out = client.post("/v1/tick", headers=HDR).json()
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
     assert out["penalties_charged"][0]["amount"] == 1
     assert CHARGES == [1.0]
 
@@ -364,10 +410,10 @@ def test_goal_broken_failed_charge_leaves_state_untouched(monkeypatch):
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
     day = backdate_penalty_day()
     monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={1.0}))
-    out = client.post("/v1/tick", headers=HDR).json()
-    assert out["penalty_errors"] == [{"day": day, "error": "simulated Beeminder outage"}]
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
+    assert out["penalty_errors"] == [{"day": day, "user_id": USER_ID, "error": "simulated Beeminder outage"}]
     assert total_charged() == 0
-    assert store.get_penalty_day(day)["charged_count"] == 0
+    assert store.get_penalty_day(USER_ID, day)["charged_count"] == 0
 
 
 def test_pre_feature_tally_is_not_retroactively_charged(monkeypatch):
@@ -381,11 +427,11 @@ def test_pre_feature_tally_is_not_retroactively_charged(monkeypatch):
     monkeypatch.setattr(beeminder, "charge", fake_charge())
     old_day = "2026-07-10"  # before PENALTY_START_DAY, tallied pre-feature
     assert old_day < main.PENALTY_START_DAY
-    with store.lock, store._conn:
-        store._conn.execute(
-            "INSERT INTO metric_days (metric, day, count) VALUES (?, ?, ?)",
-            ("gaze_goal_broken", old_day, 5))
-    out = client.post("/v1/tick", headers=HDR).json()
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(db.metric_days.insert().values(
+            user_id=USER_ID, metric="gaze_goal_broken", day=old_day, count=5,
+        ))
+    out = client.post("/v1/tick", headers=TICK_HDR).json()
     assert out["penalties_charged_count"] == 0
     assert out["penalties_charged"] == []
     assert CHARGES == []

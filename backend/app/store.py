@@ -1,349 +1,451 @@
-"""Persistence.
+"""Persistence — multi-tenant, on SQLAlchemy Core (see db.py for the schema
+and the reasoning behind Core-over-ORM and Postgres-in-prod/SQLite-in-dev).
 
-A tiny store behind a narrow interface so you can swap SQLite for Postgres or
-anything else later without touching route or domain code. SQLite is the
-default: zero-infrastructure, durable, handles its own locking, trivial to
-back up (copy the file), and portable to any host with a writable volume.
+Every table that belongs to a tenant carries user_id, and every method here
+that touches one takes a user_id and filters on it — there is no method that
+can return or mutate another user's row by construction, not by caller
+discipline. See tests/test_isolation.py, which asserts exactly that.
 
-Each commitment is stored as one row with JSON blobs for the rung and history;
-settings live in a single-row JSON document. A process-level lock serializes
-read-modify-write cycles so a user action and the scheduled /tick can't clobber
-each other. Run the API with a single worker (see the Dockerfile CMD).
+Locking has two layers, for two different failure modes:
+  * self.lock (a process-level threading.RLock, as before this port) still
+    serializes writes within one process — the cheap, always-available layer,
+    and the only one that does anything on SQLite.
+  * commitment_lock() below opens a real transaction and SELECTs the
+    commitment row FOR UPDATE — a real lock on Postgres, so two workers (or
+    two processes) racing a charge on the same commitment can't both pass the
+    "is this rung already resolved" check. This is what makes running more
+    than one worker (the Dockerfile is pinned to --workers 1 today) possible
+    once you're actually running against Postgres — see main.py's charge
+    paths, which now open one of these instead of read-then-write.
 """
 from __future__ import annotations
 
 import hmac
 import json
-import sqlite3
-import threading
 import time
-from typing import Any
+import uuid
+from contextlib import contextmanager
+from typing import Any, Iterator
 
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.engine import Connection, Engine
+
+from . import db
 from .config import settings as cfg
 from .ratchet import Commitment
 
-DEFAULT_SETTINGS = {"apiBaseUrl": "", "recipient": "Beeminder", "totalCharged": 0}
+DEFAULT_USER_SETTINGS = {"apiBaseUrl": "", "recipient": "Beeminder", "totalCharged": 0}
+
+
+def new_user_id() -> str:
+    return "u_" + uuid.uuid4().hex[:12]
 
 
 class Store:
-    def __init__(self, path: str):
-        self.path = path
+    def __init__(self, engine: Engine):
+        self.engine = engine
+        # See module docstring: this is the SQLite-safety / same-process layer,
+        # not the cross-process one.
+        import threading
         self.lock = threading.RLock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._init_schema()
-
-    def _init_schema(self) -> None:
-        with self.lock, self._conn:
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS commitments (
-                       id        TEXT PRIMARY KEY,
-                       seq       INTEGER,
-                       data      TEXT NOT NULL
-                   )"""
-            )
-            self._conn.execute(
-                "CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)"
-            )
-            # OTPs and session tokens are stored as SHA-256 hashes so a copied
-            # database file doesn't hand out live credentials.
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS otp_codes (
-                       email      TEXT PRIMARY KEY,
-                       code_hash  TEXT NOT NULL,
-                       attempts   INTEGER NOT NULL DEFAULT 0,
-                       created_at INTEGER NOT NULL,
-                       expires_at INTEGER NOT NULL
-                   )"""
-            )
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS sessions (
-                       token_hash TEXT PRIMARY KEY,
-                       email      TEXT NOT NULL,
-                       expires_at INTEGER NOT NULL
-                   )"""
-            )
-            # Daily tally per tracked metric (the Data tab). One row per
-            # metric per local day; day is YYYY-MM-DD in the configured tz.
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS metric_days (
-                       metric TEXT NOT NULL,
-                       day    TEXT NOT NULL,
-                       count  INTEGER NOT NULL DEFAULT 0,
-                       PRIMARY KEY (metric, day)
-                   )"""
-            )
-            # End-of-day Beeminder penalty bookkeeping for the "goal broken"
-            # tally. One row per day: which tz decides when that day closes,
-            # and how much of that day's count has already been charged (so
-            # the tick sweep only ever bills the *new* delta).
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS penalty_days (
-                       day           TEXT PRIMARY KEY,
-                       tz            TEXT NOT NULL,
-                       charged_count INTEGER NOT NULL DEFAULT 0
-                   )"""
-            )
-            # "Request access" submissions from the sign-in gate's denied path.
-            # Persisted so the promise the UI makes ("I'll reply soon") is true;
-            # notified best-effort by email to AUTH_EMAIL, but the row is the
-            # durable record even if that email fails to send.
-            self._conn.execute(
-                """CREATE TABLE IF NOT EXISTS access_requests (
-                       id         TEXT PRIMARY KEY,
-                       name       TEXT NOT NULL,
-                       email      TEXT NOT NULL,
-                       message    TEXT NOT NULL,
-                       created_at INTEGER NOT NULL
-                   )"""
-            )
-            row = self._conn.execute("SELECT v FROM kv WHERE k='settings'").fetchone()
-            if row is None:
-                self._conn.execute(
-                    "INSERT INTO kv (k, v) VALUES ('settings', ?)",
-                    (json.dumps(DEFAULT_SETTINGS),),
-                )
+        db.metadata.create_all(engine)
 
     def ping(self) -> bool:
-        """Cheap round-trip proving the connection is actually usable — for
-        readiness, not liveness. A process can be "up" (import succeeded, the
-        event loop is running) while its database is not: a locked WAL file,
-        a full disk, a volume that failed to mount. Liveness alone can't see
-        that; this is what distinguishes readiness from it."""
         try:
-            with self.lock:
-                self._conn.execute("SELECT 1").fetchone()
+            with self.lock, self.engine.connect() as conn:
+                conn.execute(select(1))
             return True
-        except sqlite3.Error:
+        except Exception:
             return False
 
+    # ── users ────────────────────────────────────────────────────────────
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.users).where(db.users.c.id == user_id)
+            ).mappings().first()
+        return dict(row) if row else None
+
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.users).where(db.users.c.email == email)
+            ).mappings().first()
+        return dict(row) if row else None
+
+    def get_or_create_user(self, email: str, default_tz: str) -> dict[str, Any]:
+        """Idempotent: returns the existing user for this email, or creates
+        one. Called from the OTP verify path, so "first successful sign-in
+        creates the account" — there's no separate registration step."""
+        with self.lock, self.engine.begin() as conn:
+            row = conn.execute(
+                select(db.users).where(db.users.c.email == email)
+            ).mappings().first()
+            if row:
+                return dict(row)
+            uid = new_user_id()
+            now = int(time.time() * 1000)
+            conn.execute(db.users.insert().values(
+                id=uid, email=email, created_at=now, timezone=default_tz,
+                status="active", deleted_at=None,
+            ))
+            conn.execute(db.user_settings.insert().values(
+                user_id=uid, data=json.dumps(DEFAULT_USER_SETTINGS),
+            ))
+            return {"id": uid, "email": email, "created_at": now,
+                    "timezone": default_tz, "status": "active", "deleted_at": None}
+
+    def list_users(self) -> list[dict[str, Any]]:
+        """Active users only — for the tick sweep to iterate. A deleted
+        user's rows are gone (see delete_user), so this is also just "every
+        user with data left to sweep"."""
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.users).where(db.users.c.status == "active")
+            ).mappings().all()
+        return [dict(r) for r in rows]
+
+    def delete_user(self, user_id: str) -> None:
+        """Hard delete: every row this user owns, gone, in one transaction.
+        Not a soft-delete flag — GDPR erasure means the data stops existing,
+        not that it's hidden behind a status column. Charges are the one
+        exception: they're a financial record, kept but with the user_id
+        retained (the row still exists; nothing here scrubs it) — deleting a
+        user does not currently erase their charge history. Revisit this
+        before relying on it for a real erasure request; it's flagged in
+        the project plan (1C) as a compliance item, not fully closed here."""
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(delete(db.commitments).where(db.commitments.c.user_id == user_id))
+            conn.execute(delete(db.metric_days).where(db.metric_days.c.user_id == user_id))
+            conn.execute(delete(db.penalty_days).where(db.penalty_days.c.user_id == user_id))
+            conn.execute(delete(db.user_settings).where(db.user_settings.c.user_id == user_id))
+            conn.execute(delete(db.sessions).where(db.sessions.c.user_id == user_id))
+            conn.execute(delete(db.users).where(db.users.c.id == user_id))
+
+    # ── invites (signup_mode == "invite") ───────────────────────────────────
+    def is_invited(self, email: str) -> bool:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.invites.c.email).where(db.invites.c.email == email)
+            ).first()
+        return row is not None
+
+    def add_invite(self, email: str, note: str | None) -> None:
+        with self.lock, self.engine.begin() as conn:
+            now = int(time.time() * 1000)
+            if conn.dialect.name == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+                stmt = pg_insert(db.invites).values(email=email, created_at=now, note=note)
+                stmt = stmt.on_conflict_do_nothing(index_elements=["email"])
+                conn.execute(stmt)
+            else:
+                existing = conn.execute(
+                    select(db.invites.c.email).where(db.invites.c.email == email)
+                ).first()
+                if not existing:
+                    conn.execute(db.invites.insert().values(email=email, created_at=now, note=note))
+
+    def list_invites(self) -> list[dict[str, Any]]:
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(select(db.invites).order_by(db.invites.c.created_at.desc())).mappings().all()
+        return [dict(r) for r in rows]
+
     # ── commitments ──────────────────────────────────────────────────────
-    def list_commitments(self) -> list[Commitment]:
-        with self.lock:
-            rows = self._conn.execute(
-                "SELECT data FROM commitments ORDER BY seq ASC"
-            ).fetchall()
+    def list_commitments(self, user_id: str) -> list[Commitment]:
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.commitments.c.data)
+                .where(db.commitments.c.user_id == user_id)
+                .order_by(db.commitments.c.seq.asc())
+            ).all()
         return [json.loads(r[0]) for r in rows]
 
-    def get_commitment(self, cid: str) -> Commitment | None:
-        with self.lock:
-            row = self._conn.execute(
-                "SELECT data FROM commitments WHERE id=?", (cid,)
-            ).fetchone()
+    def get_commitment(self, user_id: str, cid: str) -> Commitment | None:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.commitments.c.data)
+                .where(db.commitments.c.id == cid, db.commitments.c.user_id == user_id)
+            ).first()
         return json.loads(row[0]) if row else None
 
-    def insert_commitment(self, cm: Commitment) -> None:
-        with self.lock, self._conn:
-            seq = self._conn.execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM commitments"
-            ).fetchone()[0]
-            self._conn.execute(
-                "INSERT INTO commitments (id, seq, data) VALUES (?, ?, ?)",
-                (cm["id"], seq, json.dumps(cm)),
+    def insert_commitment(self, user_id: str, cm: Commitment) -> None:
+        with self.lock, self.engine.begin() as conn:
+            seq = conn.execute(
+                select(func.coalesce(func.max(db.commitments.c.seq), 0) + 1)
+                .where(db.commitments.c.user_id == user_id)
+            ).scalar_one()
+            conn.execute(db.commitments.insert().values(
+                id=cm["id"], user_id=user_id, seq=seq, data=json.dumps(cm),
+            ))
+
+    def update_commitment(self, user_id: str, cm: Commitment) -> None:
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(
+                update(db.commitments)
+                .where(db.commitments.c.id == cm["id"], db.commitments.c.user_id == user_id)
+                .values(data=json.dumps(cm))
             )
 
-    def update_commitment(self, cm: Commitment) -> None:
-        with self.lock, self._conn:
-            self._conn.execute(
-                "UPDATE commitments SET data=? WHERE id=?",
-                (json.dumps(cm), cm["id"]),
-            )
+    @contextmanager
+    def commitment_lock(self, user_id: str, cid: str) -> Iterator[tuple[Connection, Commitment | None]]:
+        """Open a transaction and SELECT the commitment FOR UPDATE — see the
+        module docstring. Yields (conn, commitment-or-None); the caller does
+        its read-check-charge-write sequence using conn (via
+        save_commitment_in / add_total_charged_in below) and the transaction
+        commits when the `with` block exits, releasing the lock.
+
+        Deliberately does NOT take self.lock (unlike every other method here):
+        callers hold this open across an `await beeminder.charge(...)`, and
+        self.lock is a plain threading.RLock — held across an await inside a
+        single-threaded event loop it would block every OTHER store call in
+        the whole process (any user's read or write) for the duration of one
+        user's network round-trip to Beeminder, not just serialize charges
+        against each other. Same-process charge serialization is
+        main.py's _charge_lock (an asyncio.Lock, which behaves correctly
+        across awaits); this transaction's FOR UPDATE is what serializes
+        charges across processes/workers on Postgres."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(db.commitments.c.data)
+                .where(db.commitments.c.id == cid, db.commitments.c.user_id == user_id)
+                .with_for_update()
+            ).first()
+            cm = json.loads(row[0]) if row else None
+            yield conn, cm
+
+    def save_commitment_in(self, conn: Connection, user_id: str, cm: Commitment) -> None:
+        """Write a commitment inside an existing transaction (see commitment_lock)."""
+        conn.execute(
+            update(db.commitments)
+            .where(db.commitments.c.id == cm["id"], db.commitments.c.user_id == user_id)
+            .values(data=json.dumps(cm))
+        )
 
     # ── settings ─────────────────────────────────────────────────────────
-    def get_settings(self) -> dict[str, Any]:
-        with self.lock:
-            row = self._conn.execute("SELECT v FROM kv WHERE k='settings'").fetchone()
-        return json.loads(row[0]) if row else dict(DEFAULT_SETTINGS)
+    def get_settings(self, user_id: str) -> dict[str, Any]:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.user_settings.c.data).where(db.user_settings.c.user_id == user_id)
+            ).first()
+        return json.loads(row[0]) if row else dict(DEFAULT_USER_SETTINGS)
 
-    def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
-        with self.lock, self._conn:
-            cur = self.get_settings()
+    def update_settings(self, user_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        with self.lock, self.engine.begin() as conn:
+            cur = self._get_settings_in(conn, user_id)
             cur.update({k: v for k, v in patch.items() if v is not None})
-            self._conn.execute(
-                "UPDATE kv SET v=? WHERE k='settings'", (json.dumps(cur),)
+            conn.execute(
+                update(db.user_settings)
+                .where(db.user_settings.c.user_id == user_id)
+                .values(data=json.dumps(cur))
             )
         return cur
 
-    def add_total_charged(self, amount: float) -> None:
-        with self.lock, self._conn:
-            cur = self.get_settings()
-            cur["totalCharged"] = round(cur.get("totalCharged", 0) + amount, 2)
-            self._conn.execute(
-                "UPDATE kv SET v=? WHERE k='settings'", (json.dumps(cur),)
-            )
+    def _get_settings_in(self, conn: Connection, user_id: str) -> dict[str, Any]:
+        row = conn.execute(
+            select(db.user_settings.c.data).where(db.user_settings.c.user_id == user_id)
+        ).first()
+        return json.loads(row[0]) if row else dict(DEFAULT_USER_SETTINGS)
+
+    def add_total_charged_in(self, conn: Connection, user_id: str, amount: float) -> None:
+        """Bump totalCharged inside an existing transaction (see commitment_lock)."""
+        cur = self._get_settings_in(conn, user_id)
+        cur["totalCharged"] = round(cur.get("totalCharged", 0) + amount, 2)
+        conn.execute(
+            update(db.user_settings)
+            .where(db.user_settings.c.user_id == user_id)
+            .values(data=json.dumps(cur))
+        )
+
+    def add_total_charged(self, user_id: str, amount: float) -> None:
+        with self.lock, self.engine.begin() as conn:
+            self.add_total_charged_in(conn, user_id, amount)
 
     # ── daily metric tallies (the Data tab) ──────────────────────────────
-    def bump_metric(self, metric: str, day: str, delta: int) -> int:
-        """Add `delta` to a metric's tally for `day`, floored at 0.
-
-        Returns the new count. The floor means a stray −1 on an empty day
-        stays 0 rather than going negative."""
-        with self.lock, self._conn:
-            row = self._conn.execute(
-                "SELECT count FROM metric_days WHERE metric=? AND day=?",
-                (metric, day),
-            ).fetchone()
+    def bump_metric(self, user_id: str, metric: str, day: str, delta: int) -> int:
+        """Add `delta` to a metric's tally for `day`, floored at 0."""
+        with self.lock, self.engine.begin() as conn:
+            row = conn.execute(
+                select(db.metric_days.c.count)
+                .where(db.metric_days.c.user_id == user_id,
+                       db.metric_days.c.metric == metric, db.metric_days.c.day == day)
+            ).first()
             new = max(0, (row[0] if row else 0) + delta)
-            self._conn.execute(
-                "INSERT OR REPLACE INTO metric_days (metric, day, count) VALUES (?, ?, ?)",
-                (metric, day, new),
-            )
+            if row is None:
+                conn.execute(db.metric_days.insert().values(
+                    user_id=user_id, metric=metric, day=day, count=new,
+                ))
+            else:
+                conn.execute(
+                    update(db.metric_days)
+                    .where(db.metric_days.c.user_id == user_id,
+                           db.metric_days.c.metric == metric, db.metric_days.c.day == day)
+                    .values(count=new)
+                )
         return new
 
-    def metric_series(self) -> dict[str, dict[str, int]]:
-        """{metric: {day: count}} for every recorded day (zeros included)."""
-        with self.lock:
-            rows = self._conn.execute(
-                "SELECT metric, day, count FROM metric_days ORDER BY day ASC"
-            ).fetchall()
+    def metric_series(self, user_id: str) -> dict[str, dict[str, int]]:
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.metric_days.c.metric, db.metric_days.c.day, db.metric_days.c.count)
+                .where(db.metric_days.c.user_id == user_id)
+                .order_by(db.metric_days.c.day.asc())
+            ).all()
         out: dict[str, dict[str, int]] = {}
         for metric, day, count in rows:
             out.setdefault(metric, {})[day] = count
         return out
 
-    def metric_count(self, metric: str, day: str) -> int:
-        with self.lock:
-            row = self._conn.execute(
-                "SELECT count FROM metric_days WHERE metric=? AND day=?", (metric, day)
-            ).fetchone()
+    def metric_count(self, user_id: str, metric: str, day: str) -> int:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.metric_days.c.count)
+                .where(db.metric_days.c.user_id == user_id,
+                       db.metric_days.c.metric == metric, db.metric_days.c.day == day)
+            ).first()
         return row[0] if row else 0
 
     # ── end-of-day penalty bookkeeping ────────────────────────────────────
-    def upsert_penalty_tz(self, day: str, tz: str) -> None:
-        """Record which tz's midnight should close out `day`'s penalty.
+    def upsert_penalty_tz(self, user_id: str, day: str, tz: str) -> None:
+        with self.lock, self.engine.begin() as conn:
+            existing = conn.execute(
+                select(db.penalty_days.c.day)
+                .where(db.penalty_days.c.user_id == user_id, db.penalty_days.c.day == day)
+            ).first()
+            if existing:
+                conn.execute(
+                    update(db.penalty_days)
+                    .where(db.penalty_days.c.user_id == user_id, db.penalty_days.c.day == day)
+                    .values(tz=tz)
+                )
+            else:
+                conn.execute(db.penalty_days.insert().values(
+                    user_id=user_id, day=day, tz=tz, charged_count=0,
+                ))
 
-        Last write wins: if the device's tz changes mid-day (e.g. travel),
-        the most recent tap decides when the day closes."""
-        with self.lock, self._conn:
-            self._conn.execute(
-                """INSERT INTO penalty_days (day, tz, charged_count) VALUES (?, ?, 0)
-                   ON CONFLICT(day) DO UPDATE SET tz=excluded.tz""",
-                (day, tz),
-            )
-
-    def get_penalty_day(self, day: str) -> dict[str, Any] | None:
-        with self.lock:
-            row = self._conn.execute(
-                "SELECT tz, charged_count FROM penalty_days WHERE day=?", (day,)
-            ).fetchone()
+    def get_penalty_day(self, user_id: str, day: str) -> dict[str, Any] | None:
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.penalty_days.c.tz, db.penalty_days.c.charged_count)
+                .where(db.penalty_days.c.user_id == user_id, db.penalty_days.c.day == day)
+            ).first()
         return {"tz": row[0], "charged_count": row[1]} if row else None
 
-    def mark_penalty_charged(self, day: str, charged_count: int) -> None:
-        with self.lock, self._conn:
-            self._conn.execute(
-                "UPDATE penalty_days SET charged_count=? WHERE day=?",
-                (charged_count, day),
+    def mark_penalty_charged(self, user_id: str, day: str, charged_count: int) -> None:
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(
+                update(db.penalty_days)
+                .where(db.penalty_days.c.user_id == user_id, db.penalty_days.c.day == day)
+                .values(charged_count=charged_count)
             )
 
-    def pending_penalties(self, metric: str, since: str) -> list[dict[str, Any]]:
+    def pending_penalties(self, user_id: str, metric: str, since: str) -> list[dict[str, Any]]:
         """Days on/after `since` where `metric`'s tally exceeds what's already
-        been charged.
-
-        The `since` floor matters for any metric that was tracked before it
-        started carrying a financial penalty: those older days have a
-        metric_days row but no penalty_days row (nothing ever charged them),
-        so COALESCE(pd.charged_count, 0) reads as 0 and — without the floor —
-        they'd look identical to genuine new backlog and get billed in full
-        the moment the sweep first runs.
-        """
-        with self.lock:
-            rows = self._conn.execute(
-                """SELECT md.day, md.count, pd.tz, COALESCE(pd.charged_count, 0)
-                       FROM metric_days md LEFT JOIN penalty_days pd ON pd.day = md.day
-                       WHERE md.metric = ? AND md.day >= ?
-                         AND md.count > COALESCE(pd.charged_count, 0)""",
-                (metric, since),
-            ).fetchall()
+        been charged, for one user. See the old single-tenant docstring (git
+        history) for why `since` matters — unbilled pre-feature backlog."""
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    db.metric_days.c.day, db.metric_days.c.count,
+                    db.penalty_days.c.tz,
+                    func.coalesce(db.penalty_days.c.charged_count, 0),
+                )
+                .select_from(
+                    db.metric_days.outerjoin(
+                        db.penalty_days,
+                        (db.penalty_days.c.day == db.metric_days.c.day)
+                        & (db.penalty_days.c.user_id == db.metric_days.c.user_id),
+                    )
+                )
+                .where(
+                    db.metric_days.c.user_id == user_id,
+                    db.metric_days.c.metric == metric,
+                    db.metric_days.c.day >= since,
+                    db.metric_days.c.count > func.coalesce(db.penalty_days.c.charged_count, 0),
+                )
+            ).all()
         return [
             {"day": day, "count": count, "tz": tz, "charged_count": charged}
             for day, count, tz, charged in rows
         ]
 
-    # ── access requests (sign-in gate's "request access" form) ────────────
+    # ── access requests (sign-in gate's "request access" form; pre-auth) ──
     def save_access_request(self, rid: str, name: str, email: str, message: str,
                              created_at: int) -> None:
-        with self.lock, self._conn:
-            self._conn.execute(
-                "INSERT INTO access_requests (id, name, email, message, created_at)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (rid, name, email, message, created_at),
-            )
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(db.access_requests.insert().values(
+                id=rid, name=name, email=email, message=message, created_at=created_at,
+            ))
 
     def list_access_requests(self) -> list[dict[str, Any]]:
-        with self.lock:
-            rows = self._conn.execute(
-                "SELECT id, name, email, message, created_at FROM access_requests"
-                " ORDER BY created_at DESC"
-            ).fetchall()
-        return [
-            {"id": r[0], "name": r[1], "email": r[2], "message": r[3], "created_at": r[4]}
-            for r in rows
-        ]
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.access_requests).order_by(db.access_requests.c.created_at.desc())
+            ).mappings().all()
+        return [dict(r) for r in rows]
 
-    # ── OTP codes (hashed; one active code per email) ─────────────────────
+    # ── OTP codes (hashed; one active code per email — pre-auth) ──────────
     def last_otp_created(self, email: str) -> int | None:
-        """When the current code for this email was issued (for send cooldown)."""
-        with self.lock:
-            row = self._conn.execute(
-                "SELECT created_at FROM otp_codes WHERE email=?", (email,)
-            ).fetchone()
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.otp_codes.c.created_at).where(db.otp_codes.c.email == email)
+            ).first()
         return row[0] if row else None
 
     def save_otp(self, email: str, code_hash: str, created_at: int, expires_at: int) -> None:
-        with self.lock, self._conn:
-            self._conn.execute("DELETE FROM otp_codes WHERE expires_at<=?", (created_at,))
-            self._conn.execute(
-                "INSERT OR REPLACE INTO otp_codes (email, code_hash, attempts, created_at, expires_at)"
-                " VALUES (?, ?, 0, ?, ?)",
-                (email, code_hash, created_at, expires_at),
-            )
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(delete(db.otp_codes).where(db.otp_codes.c.expires_at <= created_at))
+            conn.execute(delete(db.otp_codes).where(db.otp_codes.c.email == email))
+            conn.execute(db.otp_codes.insert().values(
+                email=email, code_hash=code_hash, attempts=0,
+                created_at=created_at, expires_at=expires_at,
+            ))
 
     def consume_otp(self, email: str, code_hash: str, max_attempts: int) -> bool:
         """True and delete on a correct code. A wrong guess burns an attempt;
-        the code is deleted outright once max_attempts is reached, so a
-        6-digit code can never be brute-forced within its lifetime."""
+        the code is deleted outright once max_attempts is reached."""
         now = int(time.time() * 1000)
-        with self.lock, self._conn:
-            row = self._conn.execute(
-                "SELECT code_hash, attempts FROM otp_codes WHERE email=? AND expires_at>?",
-                (email, now),
-            ).fetchone()
+        with self.lock, self.engine.begin() as conn:
+            row = conn.execute(
+                select(db.otp_codes.c.code_hash, db.otp_codes.c.attempts)
+                .where(db.otp_codes.c.email == email, db.otp_codes.c.expires_at > now)
+            ).first()
             if row is None:
                 return False
             stored_hash, attempts = row
             if hmac.compare_digest(stored_hash, code_hash):
-                self._conn.execute("DELETE FROM otp_codes WHERE email=?", (email,))
+                conn.execute(delete(db.otp_codes).where(db.otp_codes.c.email == email))
                 return True
             if attempts + 1 >= max_attempts:
-                self._conn.execute("DELETE FROM otp_codes WHERE email=?", (email,))
+                conn.execute(delete(db.otp_codes).where(db.otp_codes.c.email == email))
             else:
-                self._conn.execute(
-                    "UPDATE otp_codes SET attempts=attempts+1 WHERE email=?", (email,)
+                conn.execute(
+                    update(db.otp_codes)
+                    .where(db.otp_codes.c.email == email)
+                    .values(attempts=attempts + 1)
                 )
             return False
 
-    # ── sessions (token stored hashed) ────────────────────────────────────
-    def save_session(self, token_hash: str, email: str, expires_at: int) -> None:
+    # ── sessions (token stored hashed; point at a user, not an email) ─────
+    def save_session(self, token_hash: str, user_id: str, expires_at: int) -> None:
         now = int(time.time() * 1000)
-        with self.lock, self._conn:
-            self._conn.execute("DELETE FROM sessions WHERE expires_at<=?", (now,))
-            self._conn.execute(
-                "INSERT INTO sessions (token_hash, email, expires_at) VALUES (?, ?, ?)",
-                (token_hash, email, expires_at),
-            )
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(delete(db.sessions).where(db.sessions.c.expires_at <= now))
+            conn.execute(db.sessions.insert().values(
+                token_hash=token_hash, user_id=user_id, expires_at=expires_at,
+            ))
 
     def delete_session(self, token_hash: str) -> None:
-        with self.lock, self._conn:
-            self._conn.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(delete(db.sessions).where(db.sessions.c.token_hash == token_hash))
 
     def get_session(self, token_hash: str) -> dict[str, Any] | None:
         now = int(time.time() * 1000)
-        with self.lock:
-            row = self._conn.execute(
-                "SELECT email, expires_at FROM sessions WHERE token_hash=? AND expires_at>?",
-                (token_hash, now),
-            ).fetchone()
-        return {"email": row[0], "expires_at": row[1]} if row else None
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.sessions.c.user_id, db.sessions.c.expires_at)
+                .where(db.sessions.c.token_hash == token_hash, db.sessions.c.expires_at > now)
+            ).first()
+        return {"user_id": row[0], "expires_at": row[1]} if row else None
 
 
-store = Store(cfg.db_path)
+store = Store(db.make_engine())

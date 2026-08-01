@@ -17,6 +17,14 @@ same frontend in a WebView plus native deadline notifications (see
 > configured Beeminder token. Read [Money safety](#money-safety) before you arm
 > real charges. The backend ships with charges in **dry-run by default** and a
 > hard per-charge cap.
+>
+> **The backend is multi-tenant (separate accounts, separate data — see
+> [The database](#the-database)) but still has exactly ONE Beeminder token,
+> configured once for the whole server.** Every user's charge goes through
+> that same token, to that same Beeminder account. That's fine for inviting
+> people you trust with your own Beeminder account; it is not a "each user
+> pays for themselves" setup — that needs a per-user payment integration
+> (Beeminder OAuth or a real payment processor), which this port does not add.
 
 ---
 
@@ -101,20 +109,35 @@ not a rewrite.**
 ```
 backend/
   app/
-    main.py        FastAPI app — the only HTTP layer; wires the pieces below
-    ratchet.py     pure state transitions (no I/O) — the domain rules
-    beeminder.py   the ONE place money moves; charge caps + dryrun live here
-    store.py       SQLite persistence behind a small swappable interface
-    auth.py        email OTP sign-in: code issue/verify, 30-day sessions
-    security.py    bearer auth (session or static token) + request schemas
-    config.py      all env-driven configuration
+    main.py          FastAPI app — the only HTTP layer; wires the pieces below
+    ratchet.py       pure state transitions (no I/O) — the domain rules
+    beeminder.py     the ONE place money moves; charge caps + dryrun live here
+    db.py            SQLAlchemy Core table definitions + engine factory
+    store.py         persistence, multi-tenant (every table user_id-scoped);
+                     Postgres in prod, SQLite for local dev/tests
+    auth.py          email OTP sign-in: code issue/verify, 30-day sessions,
+                     the invite gate (signin_allowed)
+    security.py      three auth dependencies: current_user (session only —
+                     every user route), require_auth (session or the static
+                     token — /v1/tick only), require_admin (static token or
+                     the owner's session — /v1/admin/*)
+    logging_config.py   structured JSON logging + request-id correlation
+    config.py        all env-driven configuration
+  migrations/        Alembic — schema evolution from here forward
   tests/
-    test_ratchet.py    parity tests pinning the mock's semantics
-    test_auth.py       OTP flow, brute-force caps, tokens, sign-out revocation
-    test_beeminder.py  charge-client rails: floor/cap, dryrun, failure modes
-    test_money.py      HTTP-layer money invariants: races, ledger, edge cases
-    test_api.py        dashboard ordering, daily-metric tallies, day boundary
-  Dockerfile       single-worker non-root container, SQLite on a /data volume
+    test_ratchet.py         parity tests pinning the mock's semantics
+    test_auth.py            OTP flow, invite gate, admin routes, sessions
+    test_beeminder.py       charge-client rails: floor/cap, dryrun, failure modes
+    test_money.py           HTTP-layer money invariants: races, ledger, edges,
+                            cross-user isolation of the ledger
+    test_api.py             dashboard ordering, daily tallies, cross-user
+                            isolation of commitments and settings
+    test_access_requests.py "request access" persistence + notification
+    _helpers.py             shared signin() for the multi-tenant test files
+  Dockerfile         non-root container; runs `alembic upgrade head` before
+                     every start (see the Dockerfile's own comment on why
+                     that ordering matters)
+  alembic.ini
   requirements.txt
 
 frontend/
@@ -133,18 +156,22 @@ scripts/
   pack_bundle.py        recomposes frontend/index.html from frontend/src/
   unpack_bundle.py      splits an exported bundle into src/ (for re-imports)
   transform_bundle.py   strips the bundled mock, injects the config loader
+  import_legacy_db.py   one-time: a pre-multi-tenant-port database -> the
+                        current schema, as user #1 (see its own docstring)
 
 .github/workflows/
-  pages.yml          build + deploy the frontend to GitHub Pages (auto-retries
-                     GitHub's transient deploy flake once)
-  tick.yml           cron: POST /v1/tick
-  backend-tests.yml  the money-path test suite on every push — red means
-                     do not deploy the backend
+  pages.yml           build + deploy the frontend to GitHub Pages (auto-retries
+                      GitHub's transient deploy flake once)
+  tick.yml            cron: POST /v1/tick
+  backend-tests.yml   the money-path test suite on every push — red means
+                      do not deploy the backend
+  android-build.yml   compiles the Android shell on every push touching android/
+  security-scans.yml  pip-audit (backend deps) + gitleaks (full git history)
 
 deploy/
-  digitalocean/    docker-compose + notes
+  digitalocean/    docker-compose (API + Postgres) + notes
   fly/             fly.toml
-  README.md        cloud deploy + tick-scheduling notes
+  README.md        cloud deploy + Postgres + tick-scheduling notes
 
 .env.example       backend configuration template
 ```
@@ -158,14 +185,20 @@ deploy/
 ```
 cd backend
 pip install -r requirements.txt
+python3 -m alembic upgrade head    # creates a local SQLite db (or your DATABASE_URL)
 AUTH_MODE=none uvicorn app.main:app --reload
 ```
 
 `AUTH_MODE=none` skips auth for local dev — the sign-in gate then accepts any
-email and any 6-digit code, no email service needed. The API is now at
-`http://localhost:8000`; check `http://localhost:8000/v1/health`. With no
-Beeminder token set, read/create/confirm/choose and **dry-run** slips all work;
-live charges are refused until a token is configured.
+email and any 6-digit code (all resolving to one fixed dev user), no email
+service needed. The API is now at `http://localhost:8000`; check
+`http://localhost:8000/v1/health`. With no Beeminder token set,
+read/create/confirm/choose and **dry-run** slips all work; live charges are
+refused until a token is configured.
+
+By default this runs on a local SQLite file. Point `DATABASE_URL` at a
+Postgres instance to develop against the same database engine production
+uses — see [The database](#the-database) below.
 
 Run the tests (domain parity, auth, and the money-path invariants — no network
 needed; every Beeminder call is faked at the boundary):
@@ -219,6 +252,64 @@ leave GitHub, drive the tick from host cron instead (see `deploy/README.md`).
 
 ---
 
+## The database
+
+Multi-tenant: every commitment, tally, and setting belongs to a user, and
+every store method that touches one takes a user id and filters on it — see
+`tests/test_api.py` and `tests/test_money.py`'s isolation tests, which assert
+that directly rather than trusting call sites to remember it.
+
+**Postgres in production, SQLite for local dev and tests.** Set `DATABASE_URL`
+to a `postgresql+psycopg://...` URL for production; leave it unset and the app
+falls back to a SQLite file at `SAMVARA_DB`. This isn't just a durability
+preference: the row-level locking the charging endpoints use
+(`store.commitment_lock`, a real `SELECT ... FOR UPDATE`) is a genuine lock on
+Postgres and a silent no-op on SQLite — same-process safety on SQLite still
+holds (an `asyncio.Lock` in `main.py` serializes every charge sequence within
+one process), but SQLite was never meant to be the multi-tenant production
+target.
+
+**Migrations are Alembic**, from `backend/migrations/`:
+
+```
+cd backend
+DATABASE_URL=postgresql+psycopg://... python3 -m alembic upgrade head
+```
+
+The Docker image runs this itself before every start (see the Dockerfile), so
+a normal deploy doesn't need a separate migration step. There is no migration
+history before the multi-tenant port — the pre-port database was raw sqlite3
+with no migration tooling at all, so "baseline schema" is where Alembic's
+history starts.
+
+**Bringing over a pre-port (single-tenant) database**: that's not something
+Alembic does — a bespoke old format needs a bespoke one-time reader, not a
+schema diff. Use `scripts/import_legacy_db.py` (see its docstring; run with
+`--dry-run` first). It creates one user from the old database's owner email
+and attributes every commitment, tally, and setting to them.
+
+**Sign-in is invite-gated by default** (`SIGNUP_MODE=invite`, see
+`.env.example`): only the configured `AUTH_EMAIL` (the app owner — always
+allowed, in any mode) and addresses added via `POST /v1/admin/invites` can
+complete sign-in. `SIGNUP_MODE=open` allows anyone who completes the OTP flow.
+Manage invites with the static `API_TOKEN` or an owner session:
+
+```
+curl -X POST https://api.samvara.app/v1/admin/invites \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "someone@example.com", "note": "optional"}'
+```
+
+**Account deletion** (`DELETE /v1/account`, any signed-in user, on
+themselves) is a real hard delete — every commitment, tally, and setting row,
+gone in one transaction, not a soft-delete flag. The one exception: charge
+history isn't currently erased by this — see `Store.delete_user`'s docstring.
+There's no confirmation step or grace period at the API layer; that UX (and
+the rest of account management — verification, export, session hardening)
+is a client-side / product concern layered on top of this primitive.
+
+---
+
 ## The frontend transform
 
 The bundle resolves its API client from `window.__resources.apiClient` (the
@@ -235,32 +326,46 @@ build instead of leaking.
 
 ## API
 
-All routes are under `/v1`. When `AUTH_MODE=token`, everything except health
-and the auth endpoints requires `Authorization: Bearer <token>` — either a
-session token from the OTP flow (what the browser uses) or the static
-`API_TOKEN` (what the cron tick uses).
+All routes are under `/v1`. Three different bearer checks, not one — see
+`security.py`:
+
+- **`current_user`** — a session token only, resolved to the signed-in user.
+  Every user-data route (commitments, settings, metrics, account) depends on
+  this. The static `API_TOKEN` is deliberately **not** accepted here: there's
+  no "current user" it could resolve to, so multi-tenant it can't be a
+  god-token the way it was in the single-tenant version of this API.
+- **`require_auth`** — a session, or the static `API_TOKEN`. Used only by
+  `/v1/tick` (the cron sweep has no "current user" either — it spans everyone).
+- **`require_admin`** — the static `API_TOKEN`, or a session belonging to
+  `AUTH_EMAIL` (the app owner). Used only by `/v1/admin/*` (invite management).
+
+`AUTH_MODE=none` (local dev) disables all of this — every request resolves to
+one fixed dev user.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/v1/health` | Liveness (no auth): is the process up. Effective config included only with a valid token. |
 | GET | `/v1/health/ready` | Readiness (no auth): is the database reachable. Returns 503 if not — this is what a load balancer or orchestrator should point at, not `/v1/health`. |
-| POST | `/v1/auth/send-code` | Email a one-time sign-in code to the server's `AUTH_EMAIL`. Always 204. |
-| POST | `/v1/auth/verify-code` | Exchange `{email, code}` for a 30-day session token. |
+| POST | `/v1/auth/send-code` | Email a one-time sign-in code, if the address is allowed to sign in (the owner, always; anyone else per `SIGNUP_MODE`/invites). Always 204. |
+| POST | `/v1/auth/verify-code` | Exchange `{email, code}` for a 30-day session token. First successful verify for a new address creates the account. |
 | POST | `/v1/auth/sign-out` | Revoke the presented session token server-side. Always 204. |
+| DELETE | `/v1/account` | **`current_user`.** Hard-delete the signed-in user's account: every commitment, tally, and setting, gone in one transaction. |
 | POST | `/v1/access-requests` | `{name, email, message}` from the sign-in gate's denied path. No auth. Persisted, then a best-effort notification email to `AUTH_EMAIL`. Always 204. |
-| GET | `/v1/commitments` | List all commitments. |
-| GET | `/v1/commitments/{id}` | One commitment. |
-| POST | `/v1/commitments` | Create `{name, base_days, base_stake}`. |
-| POST | `/v1/commitments/{id}/confirm-clean` | Rung finished clean; await decision. No charge. |
-| POST | `/v1/commitments/{id}/choose-next` | Start the next rung `{days, stake}`. No charge. |
-| POST | `/v1/commitments/{id}/slip` | Report a slip. `{dryRun,raise,days,stake}`. Charges unless `dryRun`; 409 on an already-resolved rung or a duplicate report. |
-| POST | `/v1/commitments/{id}/miss` | Same as slip, recorded as a miss. |
-| POST | `/v1/commitments/{id}/auto-miss` | Grace expired (server's clock): charge + park. Idempotent; no-op before expiry. |
-| POST | `/v1/tick` | Sweep all commitments past grace; charge + park each. |
-| GET | `/v1/settings` | `{apiBaseUrl, recipient, totalCharged}`. |
-| PATCH | `/v1/settings` | Merge a settings patch. |
-| GET | `/v1/metrics` | Data-tab tallies: metric vocabulary, per-day series, today's date. |
-| POST | `/v1/metrics/{key}/bump` | `{delta: 1\|-1}` on today's tally (floored at 0). The server's calendar (`METRICS_TZ`, default America/New_York) decides what "today" is. |
+| POST | `/v1/admin/invites` | **`require_admin`.** `{email, note?}` — add an address to the sign-in allowlist. |
+| GET | `/v1/admin/invites` | **`require_admin`.** List invited addresses. |
+| GET | `/v1/commitments` | **`current_user`.** List the signed-in user's commitments. |
+| GET | `/v1/commitments/{id}` | **`current_user`.** One commitment (404 if it isn't yours). |
+| POST | `/v1/commitments` | **`current_user`.** Create `{name, base_days, base_stake}`. |
+| POST | `/v1/commitments/{id}/confirm-clean` | **`current_user`.** Rung finished clean; await decision. No charge. |
+| POST | `/v1/commitments/{id}/choose-next` | **`current_user`.** Start the next rung `{days, stake}`. No charge. |
+| POST | `/v1/commitments/{id}/slip` | **`current_user`.** Report a slip. `{dryRun,raise,days,stake}`. Charges unless `dryRun`; 409 on an already-resolved rung or a duplicate report. |
+| POST | `/v1/commitments/{id}/miss` | **`current_user`.** Same as slip, recorded as a miss. |
+| POST | `/v1/commitments/{id}/auto-miss` | **`current_user`.** Grace expired (server's clock): charge + park. Idempotent; no-op before expiry. |
+| POST | `/v1/tick` | **`require_auth`.** Sweep every user's commitments and pending penalties past grace; charge + park each. |
+| GET | `/v1/settings` | **`current_user`.** `{apiBaseUrl, recipient, totalCharged}`, per user. |
+| PATCH | `/v1/settings` | **`current_user`.** Merge a settings patch. |
+| GET | `/v1/metrics` | **`current_user`.** Data-tab tallies: metric vocabulary, per-day series, today's date. |
+| POST | `/v1/metrics/{key}/bump` | **`current_user`.** `{delta: 1\|-1}` on today's tally (floored at 0). The signed-in user's own timezone decides what "today" is. |
 
 The ratchet rules, verbatim: a clean success advances the rung by **+1 day** and
 holds the stake; a slip/miss holds the length and raises the stake by **+$1** by
@@ -301,11 +406,15 @@ interleavings above, and a ledger-balance check (sum of charges ==
 Sign-in is a real server-side email OTP, not a client-side check:
 
 1. The app posts the entered address to `/v1/auth/send-code`. If (and only if)
-   it matches the server's `AUTH_EMAIL`, a 6-digit code is emailed via
-   [Resend](https://resend.com). The response is `204` in every case, so the
-   endpoint can't be used to probe which address is allowed.
+   the address is allowed to sign in — the owner (`AUTH_EMAIL`), always; anyone
+   else only per `SIGNUP_MODE` (see [The database](#the-database)) — a 6-digit
+   code is emailed via [Resend](https://resend.com). The response is `204` in
+   every case, so the endpoint can't be used to probe which addresses are
+   allowed.
 2. `/v1/auth/verify-code` exchanges the code for a 30-day session token, which
-   the browser keeps in `localStorage` and sends as a Bearer header.
+   the browser keeps in `localStorage` and sends as a Bearer header. The first
+   successful verify for a new address creates the account — there's no
+   separate registration step.
 
 Abuse limits, all server-side: a code dies after **5 wrong guesses** or **10
 minutes**; sends are limited to **one email per minute** (repeats inside the
@@ -315,8 +424,10 @@ credential. Signing out revokes the session **in the database**
 (`/v1/auth/sign-out`), not just in the browser's localStorage.
 
 No token or address ships in the static page — `config.js` holds only the API
-base URL. The static `API_TOKEN` exists solely for the GitHub Actions tick and
-never reaches a browser. The Beeminder token never leaves the server.
+base URL. The static `API_TOKEN` grants no access to any user's data (see
+[API](#api)) — it exists solely for the GitHub Actions tick and invite
+management, and never reaches a browser. The Beeminder token never leaves the
+server.
 
 ---
 

@@ -60,9 +60,27 @@ def verify_and_consume_otp(email: str, code: str) -> bool:
     return store.consume_otp(email, sha256(code), MAX_ATTEMPTS)
 
 
+def signin_allowed(email: str) -> bool:
+    """Gate for completing sign-in, checked AFTER the OTP itself verifies —
+    proving control of the address is necessary but, in invite mode, not
+    sufficient. In "open" mode everyone who gets this far is allowed. The
+    configured AUTH_EMAIL (the app owner) is always allowed regardless of
+    mode — they manage the invite list, so they can't be locked out of it."""
+    owner = (settings.auth_email or "").strip().lower()
+    if owner and email == owner:
+        return True
+    if settings.signup_mode == "open":
+        return True
+    return store.is_invited(email)
+
+
 def create_session(email: str) -> str:
+    """Get-or-create the user for this email (first successful sign-in IS
+    signup — there's no separate registration step) and issue a session
+    token for them. Caller must have already checked signin_allowed()."""
+    user = store.get_or_create_user(email, settings.metrics_tz)
     token = secrets.token_hex(32)
-    store.save_session(sha256(token), email, _now_ms() + SESSION_TTL_MS)
+    store.save_session(sha256(token), user["id"], _now_ms() + SESSION_TTL_MS)
     return token
 
 

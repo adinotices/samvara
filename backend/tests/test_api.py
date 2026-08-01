@@ -19,21 +19,32 @@ os.environ.setdefault("API_TOKEN", "static-cron-token")
 os.environ.setdefault("AUTH_EMAIL", "owner@example.com")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import delete  # noqa: E402
 
-from app import main  # noqa: E402
+from app import db, main  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.store import store  # noqa: E402
 
+from _helpers import signin  # noqa: E402
+
 client = TestClient(app)
-HDR = {"Authorization": f"Bearer {settings.api_token}"}
+TEST_EMAIL = "api-tests@example.com"
+# settings.signup_mode is a frozen singleton for the whole pytest session
+# (whichever test module python imports first locks in the env it read) — so
+# this file can't rely on SIGNUP_MODE=open actually being in effect (another
+# module may have already frozen "invite"). Explicitly inviting is correct
+# under either mode.
+store.add_invite(TEST_EMAIL, note=None)
+HDR = signin(client, TEST_EMAIL)
+USER_ID = store.get_user_by_email(TEST_EMAIL)["id"]
 
 
 @pytest.fixture(autouse=True)
 def _clean():
-    with store.lock, store._conn:
-        store._conn.execute("DELETE FROM commitments")
-        store._conn.execute("DELETE FROM metric_days")
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(delete(db.commitments).where(db.commitments.c.user_id == USER_ID))
+        conn.execute(delete(db.metric_days).where(db.metric_days.c.user_id == USER_ID))
     yield
 
 
@@ -53,7 +64,7 @@ def test_metrics_vocabulary_and_empty_series():
     # Ratios apply to the first three only.
     assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:3]
     assert out["series"] == {}
-    assert out["today"] == main.metrics_today()
+    assert out["today"] == main.metrics_today(settings.metrics_tz)
 
 
 def test_bump_increments_today_and_decrement_floors_at_zero():
@@ -83,16 +94,24 @@ def test_metrics_day_boundary_is_new_york():
     import datetime as dt
     utc = dt.timezone.utc
     # 23:30 EDT on July 3 is 03:30 UTC July 4 — still July 3 in New York.
-    assert main.metrics_today(dt.datetime(2026, 7, 4, 3, 30, tzinfo=utc)) == "2026-07-03"
-    assert main.metrics_today(dt.datetime(2026, 7, 4, 4, 30, tzinfo=utc)) == "2026-07-04"
+    assert main.metrics_today("America/New_York", dt.datetime(2026, 7, 4, 3, 30, tzinfo=utc)) == "2026-07-03"
+    assert main.metrics_today("America/New_York", dt.datetime(2026, 7, 4, 4, 30, tzinfo=utc)) == "2026-07-04"
     # Winter (EST, UTC-5): the boundary moves an hour.
-    assert main.metrics_today(dt.datetime(2026, 1, 10, 4, 30, tzinfo=utc)) == "2026-01-09"
+    assert main.metrics_today("America/New_York", dt.datetime(2026, 1, 10, 4, 30, tzinfo=utc)) == "2026-01-09"
 
 
 def test_metrics_require_auth():
     assert client.get("/v1/metrics").status_code == 401
     assert client.post("/v1/metrics/masturbation/bump",
                        json={"delta": 1}).status_code == 401
+
+
+def test_static_token_no_longer_works_on_user_routes():
+    # The old single-tenant god-token accepted this everywhere; multi-tenant,
+    # there's no "current user" it can resolve to, so it must be rejected here
+    # even though it's still valid on /v1/tick (see test_money.py).
+    cron_hdr = {"Authorization": f"Bearer {settings.api_token}"}
+    assert client.get("/v1/commitments", headers=cron_hdr).status_code == 401
 
 
 def test_create_survives_an_id_collision(monkeypatch):
@@ -116,12 +135,46 @@ def test_commitments_listed_closest_deadline_first():
     names = [c["name"] for c in client.get("/v1/commitments", headers=HDR).json()]
     assert names == ["Near", "Mid", "Far"]
     # An overdue/parked rung has the oldest due date, so it surfaces on top.
-    cm = store.get_commitment(near)
+    cm = store.get_commitment(USER_ID, near)
     cm["current_rung"]["due"] = "2000-01-01T00:00:00.000Z"
-    store.update_commitment(cm)
+    store.update_commitment(USER_ID, cm)
     names = [c["name"] for c in client.get("/v1/commitments", headers=HDR).json()]
     assert names[0] == "Near"
     assert far and mid  # ids used; silence linters
+
+
+# ── multi-tenant isolation ───────────────────────────────────────────────────
+def test_users_cannot_see_or_touch_each_others_commitments():
+    store.add_invite("api-tests-other@example.com", note=None)
+    other_hdr = signin(client, "api-tests-other@example.com")
+    mine = mk("Mine", days=2)
+    r = client.post("/v1/commitments", headers=other_hdr,
+                    json={"name": "Theirs", "base_days": 2, "base_stake": 5.0})
+    theirs = r.json()["id"]
+
+    mine_names = [c["name"] for c in client.get("/v1/commitments", headers=HDR).json()]
+    their_names = [c["name"] for c in client.get("/v1/commitments", headers=other_hdr).json()]
+    assert "Theirs" not in mine_names
+    assert "Mine" not in their_names
+
+    assert client.get(f"/v1/commitments/{theirs}", headers=HDR).status_code == 404
+    assert client.get(f"/v1/commitments/{mine}", headers=other_hdr).status_code == 404
+    assert client.post(f"/v1/commitments/{mine}/confirm-clean", headers=other_hdr).status_code == 404
+
+    # Clean up the second user's data so it doesn't leak into other tests.
+    with store.lock, store.engine.begin() as conn:
+        other_id = store.get_user_by_email("api-tests-other@example.com")["id"]
+        conn.execute(delete(db.commitments).where(db.commitments.c.user_id == other_id))
+
+
+def test_settings_are_per_user():
+    client.patch("/v1/settings", headers=HDR, json={"recipient": "Mine"})
+    store.add_invite("api-tests-settings@example.com", note=None)
+    other_hdr = signin(client, "api-tests-settings@example.com")
+    other_settings = client.get("/v1/settings", headers=other_hdr).json()
+    assert other_settings["recipient"] != "Mine"
+    mine = client.get("/v1/settings", headers=HDR).json()
+    assert mine["recipient"] == "Mine"
 
 
 # ── request-id middleware ────────────────────────────────────────────────────

@@ -7,19 +7,42 @@
 # The API listens on :8000. Put a TLS-terminating reverse proxy (Caddy, nginx,
 # or the DO load balancer) in front so the browser talks HTTPS — a page served
 # from https://samvara.app cannot call a plain-http API (mixed content).
+#
+# Includes a Postgres service by default — the multi-tenant path, and what the
+# money-side row locking (store.commitment_lock, used by every charging
+# endpoint) is real on; see backend/README / deploy/README.md. If you'd rather
+# point DATABASE_URL at an external managed Postgres instead, delete the `db`
+# service and the `depends_on` line, and set DATABASE_URL in .env directly.
 
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: samvara
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: samvara
+    volumes:
+      - samvara-pgdata:/var/lib/postgresql/data
+
   api:
     build:
       context: ../../backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    depends_on:
+      - db
     ports:
       - "8000:8000"
     environment:
       # ── auth ──
       AUTH_MODE: "token"
       API_TOKEN: "${API_TOKEN:?set API_TOKEN in .env}"
+      # "invite" until you've deliberately decided to open signup — this app
+      # charges real money. See SIGNUP_MODE in .env.example.
+      SIGNUP_MODE: "${SIGNUP_MODE:-invite}"
+      AUTH_EMAIL: "${AUTH_EMAIL:?set AUTH_EMAIL in .env}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
       # ── CORS: the exact origin your frontend is served from ──
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-https://samvara.app}"
       # ── Beeminder (this is what moves money) ──
@@ -31,10 +54,8 @@ services:
       MIN_STAKE: "${MIN_STAKE:-1.00}"
       MAX_CHARGE_USD: "${MAX_CHARGE_USD:-50.00}"
       GRACE_HOURS: "${GRACE_HOURS:-24}"
-      # ── persistence (matches the volume below) ──
-      SAMVARA_DB: "/data/samvara.db"
-    volumes:
-      - samvara-data:/data
+      # ── persistence: Postgres via the `db` service above ──
+      DATABASE_URL: "postgresql+psycopg://samvara:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db/samvara"
 
 volumes:
-  samvara-data:
+  samvara-pgdata:

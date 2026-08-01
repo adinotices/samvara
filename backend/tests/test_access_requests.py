@@ -21,8 +21,9 @@ os.environ.setdefault("API_TOKEN", "static-cron-token")
 os.environ.setdefault("AUTH_EMAIL", "owner@example.com")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import delete  # noqa: E402
 
-from app import auth, main  # noqa: E402
+from app import auth, db, main  # noqa: E402
 from app.store import store  # noqa: E402
 
 client = TestClient(main.app)
@@ -37,8 +38,8 @@ def _isolate(monkeypatch):
         SENT.append((to, subject, text))
 
     monkeypatch.setattr(auth, "send_email", fake_send)
-    with store.lock, store._conn:
-        store._conn.execute("DELETE FROM access_requests")
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(delete(db.access_requests))
     yield
 
 

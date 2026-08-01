@@ -26,8 +26,16 @@ def _list(name: str, default: list[str]) -> list[str]:
 @dataclass
 class Settings:
     # ── persistence ──────────────────────────────────────────────────────
-    # SQLite file. Put it on a persistent volume in production.
+    # SQLite file, used only when DATABASE_URL is unset (local dev / tests).
+    # Put it on a persistent volume if you deploy on SQLite anyway.
     db_path: str = os.environ.get("SAMVARA_DB", "samvara.db")
+    # A SQLAlchemy URL, e.g. postgresql+psycopg://user:pass@host/db. This is
+    # what production should set — SQLite's single-writer model doesn't hold
+    # up multi-tenant, and the row-level locking the money paths need
+    # (SELECT ... FOR UPDATE) is a Postgres feature, not a SQLite one; SQLite
+    # here degrades to the same coarse table lock the old single-user store
+    # used; it's shared to keep local dev and tests dependency-free.
+    database_url: str = os.environ.get("DATABASE_URL", "")
 
     # ── logging ──────────────────────────────────────────────────────────
     # Standard level names (DEBUG/INFO/WARNING/ERROR/CRITICAL). JSON lines to
@@ -69,15 +77,25 @@ class Settings:
     # ── email / OTP auth ────────────────────────────────────────────────────
     # Resend (https://resend.com) API key for sending OTP emails.
     resend_api_key: str = os.environ.get("RESEND_API_KEY", "")
-    # The ONE email address allowed to request a login code. Only this address
-    # gets a session token; all other addresses are rejected at send-code time.
+    # The app owner's address: where "request access" notifications go, and
+    # who a legacy single-tenant database is attributed to on import. No
+    # longer the sign-in allowlist itself — see signup_mode/invites below.
     auth_email: str = os.environ.get("AUTH_EMAIL", "")
     # From address shown in the login email. Must be a verified Resend domain.
     email_from: str = os.environ.get("EMAIL_FROM", "Samvara <noreply@samvara.app>")
+    # "invite" -> only emails in the invites table (POST /v1/admin/invites,
+    #             owner-only) can complete sign-in; a first-time verify for
+    #             any other address is rejected before a session is issued.
+    # "open"   -> any address that completes the OTP flow gets an account.
+    # Defaults to invite: money is live in this app, so opening signup to the
+    # public is a deliberate switch to flip, not this port's default.
+    signup_mode: str = os.environ.get("SIGNUP_MODE", "invite")
 
     # ── daily metrics (the Data tab) ─────────────────────────────────────
-    # Which local calendar day a tap lands on. The server's clock rules so a
-    # traveling phone can't split one evening across two days.
+    # Default timezone for a NEW user's account (set once, at signup — see
+    # store.get_or_create_user) and the fallback when a client bump omits a
+    # tz. Each user's own `timezone` column is what actually decides "today"
+    # for them day to day; this is just where that column starts out.
     metrics_tz: str = os.environ.get("METRICS_TZ", "America/New_York")
 
     # ── ratchet timing ───────────────────────────────────────────────────

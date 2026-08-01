@@ -13,6 +13,11 @@ succeeds. A charge failure therefore leaves stored state untouched — you are
 never charged without the ledger reflecting it, and never advanced without the
 charge landing.
 
+Multi-tenant: every user-data route depends on current_user (a session token
+resolved to a user row — see security.py) and passes that user's id into every
+store call. There is no route left that can read or write another user's data
+by forgetting a filter; the store methods themselves require the id.
+
 The response shapes are byte-for-byte what the frontend's reference mock
 returned, so frontend/api-client.js can pass them straight through with no
 reshaping.
@@ -23,7 +28,6 @@ import asyncio
 import datetime as dt
 import logging
 import secrets
-import sqlite3
 import time
 import uuid
 from typing import Any
@@ -31,6 +35,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
 
 from . import auth, beeminder, logging_config, ratchet
 from .config import settings
@@ -39,10 +44,13 @@ from .security import (
     BumpBody,
     ChooseNextBody,
     CreateBody,
+    InviteBody,
     LapseBody,
     SendCodeBody,
     SettingsPatch,
     VerifyCodeBody,
+    current_user,
+    require_admin,
     require_auth,
     token_is_valid,
 )
@@ -103,8 +111,8 @@ app.add_middleware(
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-def _require(cid: str) -> dict[str, Any]:
-    cm = store.get_commitment(cid)
+def _require(user_id: str, cid: str) -> dict[str, Any]:
+    cm = store.get_commitment(user_id, cid)
     if cm is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No commitment {cid!r}.")
     return cm
@@ -120,20 +128,21 @@ def _note(cm: dict[str, Any], outcome: str) -> str:
 # refuses it on a 204 route.
 @app.post("/v1/auth/send-code", status_code=204, response_class=Response)
 async def send_code(body: SendCodeBody):
-    """Email a 6-digit OTP to the configured AUTH_EMAIL.
+    """Email a 6-digit OTP to the given address, IF that address is allowed to
+    sign in (the app owner, always; anyone else only in signup_mode=="open" or
+    if invited — see auth.signin_allowed).
 
     Always returns 204: an unauthorised address, an active send-cooldown, and a
     delivery failure are all indistinguishable from success, so the response
-    can't be used to probe which address is allowed. Problems are logged
-    server-side instead.
+    can't be used to probe which address is allowed or invited. Problems are
+    logged server-side instead. Note: the OTP is emailed to the address the
+    caller supplied — there's no fixed owner inbox to fall back to anymore,
+    since anyone permitted to sign in needs their own code.
     """
     if settings.auth_mode == "none":
         return  # dev: the gate accepts anything, no email needed
-    if not settings.auth_email:
-        log.warning("send-code requested but AUTH_EMAIL is not configured")
-        return
     email = body.email.strip().lower()
-    if email != settings.auth_email.strip().lower():
+    if not auth.signin_allowed(email):
         log.info("send-code for unauthorised address ignored")
         return
     code = auth.issue_otp(email)
@@ -148,12 +157,12 @@ async def send_code(body: SendCodeBody):
 
 @app.post("/v1/auth/verify-code")
 async def verify_code(body: VerifyCodeBody) -> dict[str, str]:
-    """Verify an OTP and return a 30-day session token."""
+    """Verify an OTP and return a 30-day session token. First successful
+    verify for a new address creates the account (see auth.create_session)."""
     if settings.auth_mode == "none":
         return {"token": "dev"}  # auth is off; any bearer value is accepted
     email = body.email.strip().lower()
-    # Belt and braces: only the configured address can ever hold a valid OTP.
-    if not settings.auth_email or email != settings.auth_email.strip().lower():
+    if not auth.signin_allowed(email):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
     if not auth.verify_and_consume_otp(email, body.code):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
@@ -173,6 +182,18 @@ async def sign_out(authorization: str | None = Header(default=None)):
         scheme, _, token_value = authorization.partition(" ")
         if scheme.lower() == "bearer" and token_value:
             store.delete_session(auth.sha256(token_value))
+
+
+@app.delete("/v1/account", dependencies=[])
+async def delete_account(user: dict[str, Any] = Depends(current_user)) -> Response:
+    """Erase this account: every commitment, tally, and setting, gone, in one
+    transaction (see Store.delete_user). No confirmation step or grace period
+    here — 1C is where the account-deletion UX (confirmation, a recovery
+    window, an in-app path per the store requirements) gets built; this is the
+    underlying primitive it calls. Charge history is the one thing NOT erased
+    by this today — see the caveat on Store.delete_user."""
+    store.delete_user(user["id"])
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/v1/access-requests", status_code=204, response_class=Response)
@@ -199,6 +220,19 @@ async def request_access(body: AccessRequestBody):
             )
         except Exception:
             log.exception("access-request notification email failed (request %s persisted)", rid)
+
+
+# ── invites (owner-only; see security.require_admin) ─────────────────────────
+@app.post("/v1/admin/invites", dependencies=[Depends(require_admin)])
+async def add_invite(body: InviteBody) -> dict[str, Any]:
+    email = body.email.strip().lower()
+    store.add_invite(email, body.note)
+    return {"email": email, "note": body.note}
+
+
+@app.get("/v1/admin/invites", dependencies=[Depends(require_admin)])
+async def list_invites() -> list[dict[str, Any]]:
+    return store.list_invites()
 
 
 # ── health (no auth — lets a load balancer / cron probe cheaply) ──────────────
@@ -238,82 +272,89 @@ async def readiness(response: Response) -> dict[str, Any]:
 
 
 # ── reads ─────────────────────────────────────────────────────────────────────
-@app.get("/v1/commitments", dependencies=[Depends(require_auth)])
-async def list_commitments() -> list[dict[str, Any]]:
+@app.get("/v1/commitments")
+async def list_commitments(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
     # Closest deadline first — the dashboard renders cards in this order. The
     # due strings are uniform ISO-8601 UTC, so they sort lexicographically.
-    return sorted(store.list_commitments(), key=lambda cm: cm["current_rung"]["due"])
+    return sorted(store.list_commitments(user["id"]), key=lambda cm: cm["current_rung"]["due"])
 
 
-@app.get("/v1/commitments/{cid}", dependencies=[Depends(require_auth)])
-async def get_commitment(cid: str) -> dict[str, Any]:
-    return _require(cid)
+@app.get("/v1/commitments/{cid}")
+async def get_commitment(cid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _require(user["id"], cid)
 
 
-@app.get("/v1/settings", dependencies=[Depends(require_auth)])
-async def get_settings() -> dict[str, Any]:
-    return store.get_settings()
+@app.get("/v1/settings")
+async def get_settings(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return store.get_settings(user["id"])
 
 
 # ── writes that never charge ─────────────────────────────────────────────────
-@app.post("/v1/commitments", dependencies=[Depends(require_auth)])
-async def create_commitment(body: CreateBody) -> dict[str, Any]:
+@app.post("/v1/commitments")
+async def create_commitment(body: CreateBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
     for _ in range(3):
         cm = ratchet.new_commitment(body.name, body.base_days, body.base_stake)
         try:
-            with store.lock:
-                store.insert_commitment(cm)
+            store.insert_commitment(user["id"], cm)
             return cm
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             continue
     raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
                         "Could not allocate a commitment id.")
 
 
-@app.post("/v1/commitments/{cid}/confirm-clean", dependencies=[Depends(require_auth)])
-async def confirm_clean(cid: str) -> dict[str, Any]:
-    with store.lock:
-        cm = _require(cid)
-        ratchet.apply_confirm_clean(cm)
-        store.update_commitment(cm)
+@app.post("/v1/commitments/{cid}/confirm-clean")
+async def confirm_clean(cid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    cm = _require(user["id"], cid)
+    ratchet.apply_confirm_clean(cm)
+    store.update_commitment(user["id"], cm)
     return cm
 
 
-@app.post("/v1/commitments/{cid}/choose-next", dependencies=[Depends(require_auth)])
-async def choose_next(cid: str, body: ChooseNextBody) -> dict[str, Any]:
-    with store.lock:
-        cm = _require(cid)
-        ratchet.apply_choose_next(cm, body.days, body.stake)
-        store.update_commitment(cm)
+@app.post("/v1/commitments/{cid}/choose-next")
+async def choose_next(cid: str, body: ChooseNextBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    cm = _require(user["id"], cid)
+    ratchet.apply_choose_next(cm, body.days, body.stake)
+    store.update_commitment(user["id"], cm)
     return cm
 
 
-@app.patch("/v1/settings", dependencies=[Depends(require_auth)])
-async def update_settings(patch: SettingsPatch) -> dict[str, Any]:
-    return store.update_settings(patch.model_dump(exclude_none=True))
+@app.patch("/v1/settings")
+async def update_settings(patch: SettingsPatch, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return store.update_settings(user["id"], patch.model_dump(exclude_none=True))
 
 
 # ── writes that charge ───────────────────────────────────────────────────────
-# One lock serializes every check-charge-persist sequence. Without it, a user
-# action and the scheduled /tick could BOTH pass the idempotency check, charge
-# Beeminder twice, and record once. Charges are rare, so contention is nil.
-# (Process-level, like store.lock — hence the single-worker Dockerfile CMD.)
+# Two layers, deliberately not one:
+#   * _charge_lock (asyncio.Lock) serializes every charge sequence WITHIN this
+#     process, including the `await beeminder.charge(...)` in the middle of
+#     it. This is the layer that's load-bearing on SQLite (and hence in the
+#     test suite): store.commitment_lock()'s SELECT ... FOR UPDATE is a
+#     real lock on Postgres but a silent no-op on SQLite, and — this is the
+#     part worth spelling out — store.lock (a threading.RLock) held across an
+#     await does NOT serialize concurrent asyncio tasks the way it looks like
+#     it should: RLock tracks the OWNING THREAD, not the owning task, and a
+#     single-threaded event loop means every task IS that thread, so a second
+#     task can re-enter a lock the first task is "holding" while it's
+#     suspended on an await. Coarse and global (not per-commitment) — charges
+#     are rare, so contention is nil.
+#   * store.commitment_lock() (store.py) opens a real DB transaction and
+#     SELECTs the commitment FOR UPDATE — the layer that's load-bearing across
+#     multiple PROCESSES/workers once this is actually running on Postgres,
+#     which asyncio.Lock can't provide (it's one process's lock).
 _charge_lock = asyncio.Lock()
 
-# monotonic timestamp of the last live lapse charge per commitment, for the
-# duplicate-report debounce below. In-memory is enough: single worker, and the
-# window is seconds.
 _recent_lapse: dict[str, float] = {}
 
 
-async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
+async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
     """Shared body for slip ('lapse') and miss ('missed').
 
     Charge order matters: on a live (non-dry) run we charge Beeminder before
     mutating or persisting, so a failed charge leaves state untouched.
     """
-    cm = _require(cid)
+    cm = _require(user_id, cid)
     cur = cm["current_rung"]
     charged = cur["stake"]
     new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
@@ -327,82 +368,76 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
         return result
 
     async with _charge_lock:
-        # Recompute from fresh state: /tick may have charged and re-rung this
-        # commitment while we waited on the lock.
-        cm = _require(cid)
-        cur = cm["current_rung"]
-        if (cur["completed"] or cur["awaiting_decision"]
-                or cur["awaiting_recommit"] or cur["auto_missed"]):
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "This rung is already resolved (it may have just auto-charged); "
-                "recommit instead of reporting a lapse.")
-        last = _recent_lapse.get(cid)
-        if last is not None and time.monotonic() - last < settings.lapse_debounce_s:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "Duplicate lapse report: a charge for this commitment just landed.")
-        charged = cur["stake"]
-        new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
-        result["charged"] = charged
-        result["recommit"] = {"days": new_days, "stake": new_stake}
+        with store.commitment_lock(user_id, cid) as (conn, cm):
+            if cm is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f"No commitment {cid!r}.")
+            cur = cm["current_rung"]
+            if (cur["completed"] or cur["awaiting_decision"]
+                    or cur["awaiting_recommit"] or cur["auto_missed"]):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "This rung is already resolved (it may have just auto-charged); "
+                    "recommit instead of reporting a lapse.")
+            last = _recent_lapse.get(cid)
+            if last is not None and time.monotonic() - last < settings.lapse_debounce_s:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "Duplicate lapse report: a charge for this commitment just landed.")
+            charged = cur["stake"]
+            new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
+            result["charged"] = charged
+            result["recommit"] = {"days": new_days, "stake": new_stake}
 
-        try:
-            charge = await beeminder.charge(charged, _note(cm, outcome))
-        except beeminder.ChargeError as e:
-            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
+            try:
+                charge = await beeminder.charge(charged, _note(cm, outcome))
+            except beeminder.ChargeError as e:
+                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
-        with store.lock:
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
-            store.add_total_charged(charged)
-            store.update_commitment(cm)
-        now_mono = time.monotonic()
-        _recent_lapse[cid] = now_mono
-        # Prune entries past the window so the dict can't grow forever.
-        cutoff = now_mono - settings.lapse_debounce_s
-        for k in [k for k, v in _recent_lapse.items() if v < cutoff]:
-            del _recent_lapse[k]
+            store.save_commitment_in(conn, user_id, cm)
+            store.add_total_charged_in(conn, user_id, charged)
+            now_mono = time.monotonic()
+            _recent_lapse[cid] = now_mono
+            cutoff = now_mono - settings.lapse_debounce_s
+            for k in [k for k, v in _recent_lapse.items() if v < cutoff]:
+                del _recent_lapse[k]
 
     result["commitment"] = cm
     result["charge"] = charge.as_dict()
     return result
 
 
-@app.post("/v1/commitments/{cid}/slip", dependencies=[Depends(require_auth)])
-async def slip(cid: str, body: LapseBody) -> dict[str, Any]:
-    return await _slip_or_miss(cid, body, "lapse")
+@app.post("/v1/commitments/{cid}/slip")
+async def slip(cid: str, body: LapseBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return await _slip_or_miss(user["id"], cid, body, "lapse")
 
 
-@app.post("/v1/commitments/{cid}/miss", dependencies=[Depends(require_auth)])
-async def miss(cid: str, body: LapseBody) -> dict[str, Any]:
-    return await _slip_or_miss(cid, body, "missed")
+@app.post("/v1/commitments/{cid}/miss")
+async def miss(cid: str, body: LapseBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return await _slip_or_miss(user["id"], cid, body, "missed")
 
 
-@app.post("/v1/commitments/{cid}/auto-miss", dependencies=[Depends(require_auth)])
-async def auto_miss(cid: str) -> dict[str, Any]:
+@app.post("/v1/commitments/{cid}/auto-miss")
+async def auto_miss(cid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """Idempotent: charge + park awaiting recommit, but only if not already
     resolved. Returns the commitment unchanged when it's a no-op."""
     async with _charge_lock:
-        # The idempotency check must sit inside the lock, before the charge —
-        # otherwise a concurrent /tick could also pass it and charge again.
-        # is_past_grace covers both the resolved flags AND the time window, so
-        # a rung freshly re-rung by a racing /slip (its due date now days away)
-        # is a no-op here rather than a second charge.
-        cm = _require(cid)
-        if not ratchet.is_past_grace(cm, settings.grace_ms):
-            return cm
-        r = cm["current_rung"]
+        with store.commitment_lock(user["id"], cid) as (conn, cm):
+            if cm is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f"No commitment {cid!r}.")
+            if not ratchet.is_past_grace(cm, settings.grace_ms):
+                return cm
+            r = cm["current_rung"]
 
-        charged = r["stake"]
-        try:
-            charge = await beeminder.charge(charged, _note(cm, "auto-missed"))
-        except beeminder.ChargeError as e:
-            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
+            charged = r["stake"]
+            try:
+                charge = await beeminder.charge(charged, _note(cm, "auto-missed"))
+            except beeminder.ChargeError as e:
+                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
-        with store.lock:
             ratchet.apply_auto_miss(cm, charged)
-            store.add_total_charged(charged)
-            store.update_commitment(cm)
+            store.save_commitment_in(conn, user["id"], cm)
+            store.add_total_charged_in(conn, user["id"], charged)
     cm["_charge"] = charge.as_dict()
     return cm
 
@@ -411,6 +446,9 @@ async def auto_miss(cid: str) -> dict[str, Any]:
 # Fixed vocabulary: the tracked metrics, in display order. `ratio: True` marks
 # the ones whose days-with-data ratio the Ratios subtab shows. The frontend
 # renders whatever this returns, so adding a metric here is the whole change.
+# TODO(1C/D-5): this vocabulary is still global, not user-defined — see the
+# app-store-readiness review. Left as-is here; making it per-user is its own
+# change, not a side effect of the multi-tenancy port.
 METRICS: list[dict[str, Any]] = [
     {"key": "porn_viewed", "label": "Porn viewed", "ratio": True},
     {"key": "sexual_content_viewed", "label": "Non-porn sexual content viewed", "ratio": True},
@@ -438,10 +476,14 @@ PENALTY_METRIC = "gaze_goal_broken"
 PENALTY_START_DAY = "2026-07-18"
 
 
-def metrics_today(now: dt.datetime | None = None) -> str:
-    """The current calendar day (YYYY-MM-DD) in the configured metrics tz."""
+def metrics_today(user_tz: str, now: dt.datetime | None = None) -> str:
+    """The current calendar day (YYYY-MM-DD) in the given user's timezone."""
     at = now if now is not None else dt.datetime.now(dt.timezone.utc)
-    return at.astimezone(ZoneInfo(settings.metrics_tz)).date().isoformat()
+    try:
+        zone = ZoneInfo(user_tz)
+    except Exception:
+        zone = ZoneInfo(settings.metrics_tz)
+    return at.astimezone(zone).date().isoformat()
 
 
 def _day_end_utc(day: str, tz_name: str | None) -> dt.datetime:
@@ -463,11 +505,11 @@ def _penalty_note(count: int, day: str) -> str:
     return f"Samvara: penalty for looking at women with sexual desire ({count}x on {day})"
 
 
-def _metrics_payload() -> dict[str, Any]:
-    today = metrics_today()
-    series = store.metric_series()
+def _metrics_payload(user_id: str, user_tz: str) -> dict[str, Any]:
+    today = metrics_today(user_tz)
+    series = store.metric_series(user_id)
     count = series.get(PENALTY_METRIC, {}).get(today, 0)
-    penalty_row = store.get_penalty_day(today)
+    penalty_row = store.get_penalty_day(user_id, today)
     charged = penalty_row["charged_count"] if penalty_row else 0
     return {
         "metrics": METRICS,
@@ -477,28 +519,31 @@ def _metrics_payload() -> dict[str, Any]:
     }
 
 
-@app.get("/v1/metrics", dependencies=[Depends(require_auth)])
-async def get_metrics() -> dict[str, Any]:
-    return _metrics_payload()
+@app.get("/v1/metrics")
+async def get_metrics(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _metrics_payload(user["id"], user["timezone"])
 
 
-@app.post("/v1/metrics/{key}/bump", dependencies=[Depends(require_auth)])
-async def bump_metric(key: str, body: BumpBody) -> dict[str, Any]:
+@app.post("/v1/metrics/{key}/bump")
+async def bump_metric(key: str, body: BumpBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if key not in _METRIC_KEYS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No metric {key!r}.")
     if body.delta not in (1, -1):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "delta must be 1 or -1.")
-    today = metrics_today()
-    store.bump_metric(key, today, body.delta)
+    today = metrics_today(user["timezone"])
+    store.bump_metric(user["id"], key, today, body.delta)
     if key == PENALTY_METRIC:
-        store.upsert_penalty_tz(today, body.tz or settings.metrics_tz)
-    return _metrics_payload()
+        store.upsert_penalty_tz(user["id"], today, body.tz or user["timezone"])
+    return _metrics_payload(user["id"], user["timezone"])
 
 
 # ── scheduled sweep (cron / GitHub Actions call this) ────────────────────────
 @app.post("/v1/tick", dependencies=[Depends(require_auth)])
 async def tick() -> dict[str, Any]:
-    """Headless equivalent of the app's per-second checkAutoMiss.
+    """Headless equivalent of the app's per-second checkAutoMiss, across every
+    user. System-level route: authenticated by require_auth (the static
+    API_TOKEN, or an owner session), never by current_user — there's no single
+    "current user" for a sweep that spans everyone.
 
     Charges and parks every commitment whose grace window has elapsed with no
     response. Safe to call as often as you like — commitments already resolved
@@ -506,62 +551,60 @@ async def tick() -> dict[str, Any]:
     """
     charged_list: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-
-    # Snapshot candidate ids only; each is re-read and re-checked under the
-    # charge lock so a user action landing mid-sweep can't be double-charged.
-    candidate_ids = [
-        cm["id"] for cm in store.list_commitments()
-        if ratchet.is_past_grace(cm, settings.grace_ms)
-    ]
-
-    for cid in candidate_ids:
-        async with _charge_lock:
-            cm = store.get_commitment(cid)
-            if cm is None or not ratchet.is_past_grace(cm, settings.grace_ms):
-                continue
-            amount = cm["current_rung"]["stake"]
-            try:
-                charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
-            except beeminder.ChargeError as e:
-                errors.append({"id": cid, "error": str(e)})
-                continue
-            with store.lock:
-                ratchet.apply_auto_miss(cm, amount)
-                store.add_total_charged(amount)
-                store.update_commitment(cm)
-            charged_list.append({
-                "id": cid, "amount": amount, "charge": charge.as_dict(),
-            })
-
-    # Penalty sweep: charge the "goal broken" tally for any day that has
-    # closed (past midnight in its recorded tz) and isn't fully billed yet.
     penalties_charged: list[dict[str, Any]] = []
     penalty_errors: list[dict[str, Any]] = []
     now = dt.datetime.now(dt.timezone.utc)
 
-    for pending in store.pending_penalties(PENALTY_METRIC, since=PENALTY_START_DAY):
-        day = pending["day"]
-        async with _charge_lock:
-            # Recompute from fresh state: a concurrent tick or a same-day tap
-            # may have changed the count or charged_count while we waited.
-            row = store.get_penalty_day(day)
-            tz = (row["tz"] if row else None) or pending["tz"]
-            charged = row["charged_count"] if row else 0
-            count = store.metric_count(PENALTY_METRIC, day)
-            if count <= charged or now < _day_end_utc(day, tz):
-                continue
-            amount = count - charged
-            try:
-                charge = await beeminder.charge(amount, _penalty_note(count, day))
-            except beeminder.ChargeError as e:
-                penalty_errors.append({"day": day, "error": str(e)})
-                continue
-            with store.lock:
-                store.mark_penalty_charged(day, count)
-                store.add_total_charged(amount)
-            penalties_charged.append({
-                "day": day, "amount": amount, "charge": charge.as_dict(),
-            })
+    for u in store.list_users():
+        uid = u["id"]
+
+        candidate_ids = [
+            cm["id"] for cm in store.list_commitments(uid)
+            if ratchet.is_past_grace(cm, settings.grace_ms)
+        ]
+        for cid in candidate_ids:
+            async with _charge_lock:
+                with store.commitment_lock(uid, cid) as (conn, cm):
+                    if cm is None or not ratchet.is_past_grace(cm, settings.grace_ms):
+                        continue
+                    amount = cm["current_rung"]["stake"]
+                    try:
+                        charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
+                    except beeminder.ChargeError as e:
+                        errors.append({"id": cid, "user_id": uid, "error": str(e)})
+                        continue
+                    ratchet.apply_auto_miss(cm, amount)
+                    store.save_commitment_in(conn, uid, cm)
+                    store.add_total_charged_in(conn, uid, amount)
+                    charged_list.append({
+                        "id": cid, "user_id": uid, "amount": amount, "charge": charge.as_dict(),
+                    })
+
+        # Penalty sweep: charge the "goal broken" tally for any day that has
+        # closed (past midnight in its recorded tz) and isn't fully billed yet.
+        for pending in store.pending_penalties(uid, PENALTY_METRIC, since=PENALTY_START_DAY):
+            day = pending["day"]
+            async with _charge_lock:
+                # Recompute from fresh state: a concurrent tick or a same-day
+                # tap may have changed the count or charged_count while
+                # waiting on the lock.
+                row = store.get_penalty_day(uid, day)
+                tz = (row["tz"] if row else None) or pending["tz"]
+                charged = row["charged_count"] if row else 0
+                count = store.metric_count(uid, PENALTY_METRIC, day)
+                if count <= charged or now < _day_end_utc(day, tz):
+                    continue
+                amount = count - charged
+                try:
+                    charge = await beeminder.charge(amount, _penalty_note(count, day))
+                except beeminder.ChargeError as e:
+                    penalty_errors.append({"day": day, "user_id": uid, "error": str(e)})
+                    continue
+                store.mark_penalty_charged(uid, day, count)
+                store.add_total_charged(uid, amount)
+                penalties_charged.append({
+                    "day": day, "user_id": uid, "amount": amount, "charge": charge.as_dict(),
+                })
 
     return {
         "charged": charged_list, "charged_count": len(charged_list), "errors": errors,

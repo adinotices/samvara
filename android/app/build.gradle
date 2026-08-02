@@ -10,8 +10,8 @@ android {
         applicationId 'app.samvara.shell'
         minSdk 26          // adaptive icons + java.time + notification channels
         targetSdk 35
-        versionCode 7
-        versionName '1.6'
+        versionCode 8
+        versionName '1.7'
     }
 
     compileOptions {
@@ -20,10 +20,30 @@ android {
     }
 
     buildTypes {
+        debug {
+            debuggable true
+            versionNameSuffix ' (debug)'
+        }
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            debuggable false
+            // For app signing, set the signingConfig below to your release key.
+            // signingConfig signingConfigs.release
         }
     }
+
+    // Signing configuration template for release builds.
+    // Uncomment and configure with your actual keystore details:
+    // signingConfigs {
+    //     release {
+    //         storeFile file('release.keystore')
+    //         storePassword System.getenv('KEYSTORE_PASSWORD') ?: ''
+    //         keyAlias System.getenv('KEY_ALIAS') ?: ''
+    //         keyPassword System.getenv('KEY_PASSWORD') ?: ''
+    //     }
+    // }
 }
 
 // No dependencies block: framework APIs only (WebView, JobScheduler,

@@ -25,7 +25,7 @@ This guide walks through submitting Saṃvara to Google Play Store and Apple App
 - [ ] Privacy Policy URL live and accessible
 - [ ] Terms URL live and accessible (or link to GitHub)
 - [ ] Support email configured (support@samvara.app)
-- [ ] Beeminder integration clearly explained (both in-app and in listings)
+- [ ] Direct Stripe billing clearly explained (both in-app and in listings)
 - [ ] Content rating questionnaire completed (IARC for Google Play)
 
 ### Assets
@@ -95,7 +95,7 @@ This guide walks through submitting Saṃvara to Google Play Store and Apple App
 2. Enter app name: **Saṃvara**
 3. Select category: **Health & Fitness** (or **Productivity**)
 4. Confirm default language: **English**
-5. Indicate if app is free or paid: **Free** (with in-app Beeminder charges)
+5. Indicate if app is free or paid: **Free** (with in-app real-money charges via Stripe)
 
 ### Step 3: Fill Out Store Listing
 
@@ -277,8 +277,8 @@ Skip (not applicable for Saṃvara)
 ### Step 11: Review Information
 
 1. Navigate to **Versions → [Your Version] → App Review Information**
-2. **Notes for App Review:** Explain Beeminder integration and real charges
-   - Example: "This app integrates with Beeminder, a quantified self service. Users create accountability commitments with financial stakes (real money). When users fail to keep their commitments, they are charged via Beeminder (user consent on first use). Users can view their charges in the app and manage account settings."
+2. **Notes for App Review:** Explain the direct billing model and real charges
+   - Example: "This app lets users create accountability commitments with financial stakes (real money). Users add a payment method directly in the app (processed via Stripe). When users fail to keep their commitments, they are charged that stake directly to Saṃvara — not to any third party. Users can view their charge history in the app and manage their payment method and account settings."
 3. **App Review Contact Info:** support@samvara.app
 4. **Demo Account (if required):** Provide test email / password (optional)
 5. **Sign-in Requirements:** Select "Yes, my app requires sign-in" if applicable
@@ -286,8 +286,8 @@ Skip (not applicable for Saṃvara)
 ### Step 12: Pricing & Availability
 
 1. Navigate to **Pricing and Availability**
-2. Set **Pricing Tier:** Free (in-app Beeminder charges are separate)
-3. Set **Territories:** Select all countries where Beeminder operates (most countries)
+2. Set **Pricing Tier:** Free (in-app Stripe charges are separate)
+3. Set **Territories:** Select all countries where Stripe is supported (most countries — see https://stripe.com/global)
 4. Click **Save**
 
 ### Step 13: Privacy Policy
@@ -373,7 +373,7 @@ Once approved:
 
 ### Google Play Policies
 
-1. **Real Money Charges:** Be transparent about Beeminder integration and charges
+1. **Real Money Charges:** Be transparent about the direct-billing model and how charges work
 2. **Privacy:** Link to working privacy policy (required)
 3. **Terms:** Recommend providing terms (not required but best practice)
 4. **No Malware:** App must not contain viruses or exploit devices
@@ -382,7 +382,8 @@ Once approved:
 ### Apple App Store Policies
 
 1. **Guideline 3.1: Payments:** Clearly disclose when real money will be charged
-   - In Saṃvara's case, charges happen via Beeminder (external service), so disclose clearly
+   - Saṃvara bills the user's card directly via Stripe, not through a separate external service — disclose this clearly in the review notes and in-app.
+   - **Read 3.1.1 (In-App Purchase) carefully before submitting.** Apple requires IAP for unlocking app functionality or digital content; it generally exempts payments for real-world goods/services and "penalty" or accountability charges tied to something that happens outside the app (a missed real-world commitment), similar to how ride-hailing or on-demand services bill externally. Because Saṃvara now charges directly rather than passing the charge to a clearly external third party, this exemption is less self-evident than it was before — get this confirmed (Apple's Small Business/Developer support, or app review notes) before relying on it, and be ready to explain the accountability-stake framing if a reviewer flags it as bypassing IAP.
 2. **Guideline 5.1: Legal:** Provide privacy policy (required)
 3. **Guideline 5.2: Terms:** Provide terms of service (recommended)
 4. **Guideline 2.3: Objectionable Content:** Avoid sexual content or excessive profanity
@@ -396,11 +397,11 @@ Once approved:
 
 ### Google Play Rejection: "Unclear billing information"
 
-**Solution:** Add note to app description: "This app integrates with Beeminder, a quantified self service. Users may incur charges via Beeminder based on their commitment settings."
+**Solution:** Add note to app description: "This app charges users directly, via Stripe, based on the accountability commitments they set. Users add a payment method in-app and may incur charges based on their commitment settings."
 
 ### Apple App Store Rejection: "Real money charges not clearly disclosed"
 
-**Solution:** In App Review Information notes, explain: "This app integrates with Beeminder. Users create accountability commitments with optional financial stakes. Users are charged via Beeminder when they fail to keep their commitments. All charges require explicit user consent and are clearly displayed in the app."
+**Solution:** In App Review Information notes, explain: "This app lets users create accountability commitments with optional financial stakes. Users add a payment method directly in the app (processed via Stripe) and are charged that stake directly when they fail to keep their commitments. All charges require explicit user consent (the user sets the stake and adds the card themselves) and are clearly displayed in the app."
 
 ### Build Upload Fails: "Invalid certificate"
 
@@ -451,9 +452,9 @@ Common issues:
 - Help: https://developer.apple.com/support/
 - Policies: https://developer.apple.com/app-store/review/guidelines/
 
-**Beeminder Integration:**
-- API Docs: https://beeminder.com/api
-- Support: support@beeminder.com
+**Stripe Payment Processing:**
+- API Docs: https://stripe.com/docs/api
+- Support: https://support.stripe.com
 
 ---
 

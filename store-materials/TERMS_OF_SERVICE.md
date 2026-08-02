@@ -25,7 +25,7 @@ Saṃvara is an accountability platform that allows users to:
 - Manage security (active sessions, audit logs)
 - Export personal data
 
-**Important:** Saṃvara charges real money via Beeminder when you fail to keep your commitments. See Section 8 below.
+**Important:** Saṃvara charges real money directly to your payment method on file when you fail to keep your commitments. Charges are processed by Stripe, our payment processor, and the funds are retained by Saṃvara as the accountability consequence you agreed to. See Section 8 below.
 
 ## 3. Eligibility
 
@@ -83,7 +83,7 @@ You agree NOT to:
 - **Harassment** — Use Saṃvara to harass, threaten, or abuse other users (though we don't have multi-user features)
 - **Spam** — Send unsolicited messages or advertisements
 - **Fraud** — Provide false information, impersonate others, or commit fraud
-- **Beeminder Manipulation** — Intentionally game the system to avoid charges or exploit Beeminder integration
+- **Payment Manipulation** — Intentionally game the system to avoid charges (e.g., stolen card numbers, chargeback abuse) or exploit the billing integration
 - **Malware** — Upload viruses, malware, or any malicious code
 - **Copyright Violation** — Infringe on third-party copyrights, trademarks, or intellectual property
 
@@ -113,11 +113,11 @@ Saṃvara is provided "as-is" and "as-available" without warranties. We make no 
 
 ### 7.2 Third-Party Services
 
-Saṃvara integrates with Beeminder (https://beeminder.com). We are not responsible for:
-- Beeminder's charges or delays
-- Beeminder's terms of service or privacy practices
-- Data loss on Beeminder's servers
-- Disputes between you and Beeminder
+Saṃvara uses Stripe (https://stripe.com) to process payments. We are not responsible for:
+- Stripe's processing delays or outages
+- Stripe's terms of service or privacy practices
+- Data loss on Stripe's servers
+- Disputes between you and your card issuer or bank
 
 ### 7.3 Limitation of Liability
 
@@ -127,7 +127,7 @@ We are NOT liable for:
 - Indirect, incidental, special, or consequential damages
 - Lost profits, revenue, or data
 - Damage to your device or any third-party device
-- Charges made by Beeminder (even if erroneous)
+- Charges made through the Service (even if erroneous), beyond the refund process in Section 8.3
 - Unauthorized access to your account
 - Any damages exceeding $100
 
@@ -137,34 +137,29 @@ This limitation applies even if Saṃvara has been advised of the possibility of
 
 ### 8.1 Real Money Charges
 
-**IMPORTANT: Saṃvara is not a game or simulation. Charges are REAL.**
+**IMPORTANT: Saṃvara is not a game or simulation. Charges are REAL, and Saṃvara — not a third party — is the merchant of record and recipient of the funds.**
 
 When you:
 - **Slip** (self-reported lapse) — You are charged the current rung's stake
 - **Miss** (deadline passes without response) — You are charged the current rung's stake
 - **Fail to recommit** (after a charge) — Future commitments can have higher stakes
 
-Charges are executed via Beeminder's API. Beeminder charges your payment method (credit card, bank account, etc.) on file with their service.
+Charges are billed directly to the payment method you add in the app, processed through Stripe (https://stripe.com), our payment processor. Saṃvara retains the charged amount as the accountability consequence you agreed to when you set the stake — this money does not go to any other user, charity, or third party unless we explicitly say otherwise for a specific feature.
 
 ### 8.2 Payment Method
 
-Charges go to your Beeminder account. To update your payment method, sign into Beeminder (https://beeminder.com) and configure your settings there.
-
-**Saṃvara does not store your payment information.** All charges are Beeminder's responsibility.
+You add and manage your payment method (credit or debit card) directly in the app, via Stripe's secure card-collection flow. Saṃvara never receives or stores your raw card number — Stripe tokenizes it and Saṃvara only holds a reference (a Stripe Customer ID and payment method token) needed to charge you when a commitment is slipped or missed. You can update or remove your saved card in Settings at any time; removing it without adding a replacement means future slip/miss charges will fail, and unresolved commitments will show as unable to charge until a valid payment method is on file.
 
 ### 8.3 Refunds
 
 Charges are generally non-refundable unless:
-- The charge was erroneous (duplicate, wrong amount, etc.) — Contact us at support@samvara.app
-- Beeminder's system made an error — Contact Beeminder at support@beeminder.com
+- The charge was erroneous (duplicate, wrong amount, a bug on our end, etc.) — Contact us at support@samvara.app
 
-We will investigate disputes within 30 days. If a charge was erroneous, we will issue a refund request to Beeminder (which may take 5-10 business days).
+We will investigate disputes within 30 days. If a charge was erroneous, we will issue a refund via Stripe, which typically appears on your statement within 5-10 business days.
 
 ### 8.4 Disputed Charges
 
-If you dispute a charge made by Beeminder, contact:
-1. **Beeminder Support** (support@beeminder.com) — First point of contact
-2. **Saṃvara Support** (support@samvara.app) — If the issue is on our end (e.g., erroneous charge due to a bug)
+If you dispute a charge, contact **Saṃvara Support** (support@samvara.app) first — since Saṃvara is the merchant of record, we're the ones who can investigate and, where warranted, refund a charge. If you file a chargeback with your card issuer instead of contacting us, we reserve the right to suspend your account while the dispute is resolved, consistent with Stripe's and card networks' dispute-handling requirements.
 
 ### 8.5 No Refund for Reneged Commitments
 
@@ -193,7 +188,7 @@ You agree to indemnify and hold harmless Saṃvara, its officers, directors, emp
 - Your violation of these Terms
 - Your violation of any law
 - Your commitments and charges
-- Your disputes with Beeminder
+- Your disputes with your card issuer or bank
 
 ## 11. Dispute Resolution
 

@@ -4,11 +4,13 @@ This is the only layer that knows about HTTP. It wires three collaborators that
 each stay ignorant of the others:
 
   * ratchet.py  — pure state transitions (no I/O),
-  * beeminder.py — the one place money moves,
+  * billing.py  — the one place money moves (dispatches to stripe_billing.py,
+    the default for every ordinary user, or beeminder.py, hidden and gated to
+    the app owner's account only — see billing.py's module docstring),
   * store.py    — persistence.
 
 Every mutating endpoint follows the same discipline: compute the transition,
-charge Beeminder FIRST when money is owed, and only persist once the charge
+charge the provider FIRST when money is owed, and only persist once the charge
 succeeds. A charge failure therefore leaves stored state untouched — you are
 never charged without the ledger reflecting it, and never advanced without the
 charge landing.
@@ -35,11 +37,12 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
-from . import auth, beeminder, db, logging_config, ratchet
-from .config import settings
+from . import auth, billing, db, logging_config, ratchet, stripe_billing
+from .config import is_owner, settings
 from .security import (
     AccessRequestBody,
     BumpBody,
@@ -446,14 +449,73 @@ async def choose_next(cid: str, body: ChooseNextBody, user: dict[str, Any] = Dep
 
 @app.patch("/v1/settings")
 async def update_settings(patch: SettingsPatch, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if patch.chargeProvider is not None:
+        try:
+            billing.validate_provider_choice(user, patch.chargeProvider)
+        except billing.ChargeError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        except PermissionError as e:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, str(e)) from e
     return store.update_settings(user["id"], patch.model_dump(exclude_none=True))
+
+
+# ── billing (Stripe card-on-file for the default 'samvara' charge provider) ──
+@app.get("/v1/billing/status")
+async def billing_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    s = store.get_settings(user["id"])
+    return {
+        "provider": billing.resolve_provider(user),
+        "hasPaymentMethod": bool(s.get("stripePaymentMethodId")),
+        "canUseBeeminder": is_owner(user["email"]),
+        "publishableKey": settings.stripe_publishable_key,
+    }
+
+
+@app.post("/v1/billing/setup-intent")
+async def billing_setup_intent(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Start adding/replacing a card: returns a SetupIntent client secret for
+    the client's Stripe SDK to collect and confirm a card against. No money
+    moves here — see /v1/billing/payment-method for saving the result."""
+    try:
+        customer_id = await billing.get_or_create_customer_id(user)
+        intent = await stripe_billing.create_setup_intent(customer_id)
+    except stripe_billing.ChargeError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+    return {**intent, "publishableKey": settings.stripe_publishable_key}
+
+
+class PaymentMethodBody(BaseModel):
+    setupIntentId: str = Field(min_length=1)
+
+
+@app.post("/v1/billing/payment-method")
+async def billing_save_payment_method(
+    body: PaymentMethodBody, user: dict[str, Any] = Depends(current_user)
+) -> dict[str, Any]:
+    """The client confirms a SetupIntent via Stripe's native SDK, then reports
+    just the SetupIntent id here — the server looks up the resulting
+    payment_method itself (see stripe_billing.get_setup_intent_payment_method)
+    rather than trusting a client-supplied pm_id, and records it as this
+    user's default payment method for future off-session penalty charges."""
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "No Stripe customer on file; call /v1/billing/setup-intent first.",
+        )
+    try:
+        payment_method_id = await stripe_billing.get_setup_intent_payment_method(body.setupIntentId)
+        await stripe_billing.set_default_payment_method(customer_id, payment_method_id)
+    except stripe_billing.ChargeError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+    return store.update_settings(user["id"], {"stripePaymentMethodId": payment_method_id})
 
 
 # ── writes that charge ───────────────────────────────────────────────────────
 # Two layers, deliberately not one:
 #   * _charge_lock (asyncio.Lock) serializes every charge sequence WITHIN this
-#     process, including the `await beeminder.charge(...)` in the middle of
-#     it. This is the layer that's load-bearing on SQLite (and hence in the
+#     process, including the `await billing.charge_for_user(...)` in the
+#     middle of it. This is the layer that's load-bearing on SQLite (and hence in the
 #     test suite): store.commitment_lock()'s SELECT ... FOR UPDATE is a
 #     real lock on Postgres but a silent no-op on SQLite, and — this is the
 #     part worth spelling out — store.lock (a threading.RLock) held across an
@@ -472,12 +534,14 @@ _charge_lock = asyncio.Lock()
 _recent_lapse: dict[str, float] = {}
 
 
-async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
+async def _slip_or_miss(user: dict[str, Any], cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
     """Shared body for slip ('lapse') and miss ('missed').
 
-    Charge order: create pending record, charge Beeminder, commit or fail the record.
-    Outbox pattern ensures: charge succeeds → ledger records it; charge fails → nothing.
+    Charge order: create pending record, charge the resolved provider, commit
+    or fail the record. Outbox pattern ensures: charge succeeds → ledger
+    records it; charge fails → nothing.
     """
+    user_id = user["id"]
     cm = _require(user_id, cid)
     cur = cm["current_rung"]
     charged = cur["stake"]
@@ -514,25 +578,28 @@ async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -
 
             # Outbox pattern: create pending charge record before external call
             idempotency_key = f"{cid}:{outcome}:{cur.get('seq', 0)}"
+            provider = billing.resolve_provider(user)
             try:
                 charge_id = store.create_pending_charge(
                     user_id, charged, kind=outcome, commitment_id=cid,
-                    idempotency_key=idempotency_key, note=_note(cm, outcome)
+                    idempotency_key=idempotency_key, note=_note(cm, outcome),
+                    provider=provider,
                 )
             except ValueError as e:
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
-            # Charge Beeminder (external, can fail)
+            # Charge the resolved provider (external, can fail)
             try:
-                charge = await beeminder.charge(charged, _note(cm, outcome))
-                store.commit_charge(charge_id, charge.beeminder_id)
+                charge = await billing.charge_for_user(
+                    user, charged, _note(cm, outcome), idempotency_key=idempotency_key)
+                store.commit_charge(charge_id, charge.provider_charge_id)
                 store.create_notification(
                     user_id, "commitment_charged",
                     f"Commitment charged: {cm['name']}",
                     f"You were charged ${charged} for a {outcome}.",
                     {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "kind": outcome}
                 )
-            except beeminder.ChargeError as e:
+            except billing.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
                 store.create_notification(
                     user_id, "charge_failed",
@@ -558,12 +625,12 @@ async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -
 
 @app.post("/v1/commitments/{cid}/slip")
 async def slip(cid: str, body: LapseBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    return await _slip_or_miss(user["id"], cid, body, "lapse")
+    return await _slip_or_miss(user, cid, body, "lapse")
 
 
 @app.post("/v1/commitments/{cid}/miss")
 async def miss(cid: str, body: LapseBody, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    return await _slip_or_miss(user["id"], cid, body, "missed")
+    return await _slip_or_miss(user, cid, body, "missed")
 
 
 @app.post("/v1/commitments/{cid}/auto-miss")
@@ -581,24 +648,27 @@ async def auto_miss(cid: str, user: dict[str, Any] = Depends(current_user)) -> d
             charged = r["stake"]
             # Outbox: create pending charge before external call
             idempotency_key = f"{cid}:auto-missed:{r.get('seq', 0)}"
+            provider = billing.resolve_provider(user)
             try:
                 charge_id = store.create_pending_charge(
                     user["id"], charged, kind="auto-missed", commitment_id=cid,
-                    idempotency_key=idempotency_key, note=_note(cm, "auto-missed")
+                    idempotency_key=idempotency_key, note=_note(cm, "auto-missed"),
+                    provider=provider,
                 )
             except ValueError as e:
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
             try:
-                charge = await beeminder.charge(charged, _note(cm, "auto-missed"))
-                store.commit_charge(charge_id, charge.beeminder_id)
+                charge = await billing.charge_for_user(
+                    user, charged, _note(cm, "auto-missed"), idempotency_key=idempotency_key)
+                store.commit_charge(charge_id, charge.provider_charge_id)
                 store.create_notification(
                     user["id"], "auto_missed",
                     f"Commitment auto-charged: {cm['name']}",
                     f"You were charged ${charged} because your commitment was auto-missed.",
                     {"commitment_id": cid, "charge_id": charge_id, "amount": charged}
                 )
-            except beeminder.ChargeError as e:
+            except billing.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
                 store.create_notification(
                     user["id"], "charge_failed",
@@ -743,25 +813,28 @@ async def tick() -> dict[str, Any]:
                     amount = cm["current_rung"]["stake"]
                     # Outbox: create pending charge before external call
                     idempotency_key = f"{cid}:auto-missed-tick:{cm.get('seq', 0)}"
+                    provider = billing.resolve_provider(u)
                     try:
                         charge_id = store.create_pending_charge(
                             uid, amount, kind="auto-missed", commitment_id=cid,
-                            idempotency_key=idempotency_key, note=_note(cm, "auto-missed (tick)")
+                            idempotency_key=idempotency_key, note=_note(cm, "auto-missed (tick)"),
+                            provider=provider,
                         )
                     except ValueError as e:
                         errors.append({"id": cid, "user_id": uid, "error": str(e)})
                         continue
 
                     try:
-                        charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
-                        store.commit_charge(charge_id, charge.beeminder_id)
+                        charge = await billing.charge_for_user(
+                            u, amount, _note(cm, "auto-missed (tick)"), idempotency_key=idempotency_key)
+                        store.commit_charge(charge_id, charge.provider_charge_id)
                         store.create_notification(
                             uid, "auto_missed",
                             f"Commitment auto-charged: {cm['name']}",
                             f"You were charged ${amount} because your commitment was auto-missed.",
                             {"commitment_id": cid, "charge_id": charge_id, "amount": amount}
                         )
-                    except beeminder.ChargeError as e:
+                    except billing.ChargeError as e:
                         store.fail_charge(charge_id, str(e))
                         store.create_notification(
                             uid, "charge_failed",
@@ -780,7 +853,7 @@ async def tick() -> dict[str, Any]:
 
         # Penalty sweep: charge the "goal broken" tally for any day that has
         # closed (past midnight in its recorded tz) and isn't fully billed yet.
-        # Uses outbox pattern: create pending charge before Beeminder call.
+        # Uses outbox pattern: create pending charge before the provider call.
         for pending in store.pending_penalties(uid, PENALTY_METRIC, since=PENALTY_START_DAY):
             day = pending["day"]
             async with _charge_lock:
@@ -796,25 +869,28 @@ async def tick() -> dict[str, Any]:
                 amount = count - charged
                 # Outbox: create pending penalty charge before external call
                 idempotency_key = f"{uid}:penalty:{day}:{count}"
+                provider = billing.resolve_provider(u)
                 try:
                     charge_id = store.create_pending_charge(
                         uid, amount, kind="penalty",
-                        idempotency_key=idempotency_key, note=_penalty_note(count, day)
+                        idempotency_key=idempotency_key, note=_penalty_note(count, day),
+                        provider=provider,
                     )
                 except ValueError as e:
                     penalty_errors.append({"day": day, "user_id": uid, "error": str(e)})
                     continue
 
                 try:
-                    charge = await beeminder.charge(amount, _penalty_note(count, day))
-                    store.commit_charge(charge_id, charge.beeminder_id)
+                    charge = await billing.charge_for_user(
+                        u, amount, _penalty_note(count, day), idempotency_key=idempotency_key)
+                    store.commit_charge(charge_id, charge.provider_charge_id)
                     store.create_notification(
                         uid, "penalty",
                         f"Penalty charge: {day}",
                         f"You were charged ${amount} penalty for breaking your goal on {day}.",
                         {"charge_id": charge_id, "amount": amount, "day": day, "count": count}
                     )
-                except beeminder.ChargeError as e:
+                except billing.ChargeError as e:
                     store.fail_charge(charge_id, str(e))
                     store.create_notification(
                         uid, "charge_failed",

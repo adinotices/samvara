@@ -156,6 +156,20 @@ class ApiClient {
     return this.client.get('/v1/data-export');
   }
 
+  // Billing endpoints — Stripe is the only charge provider ordinary users
+  // ever see; there is no client-side path to the hidden Beeminder option.
+  async getBillingStatus() {
+    return this.client.get('/v1/billing/status');
+  }
+
+  async createSetupIntent() {
+    return this.client.post('/v1/billing/setup-intent');
+  }
+
+  async savePaymentMethod(setupIntentId: string) {
+    return this.client.post('/v1/billing/payment-method', { setupIntentId });
+  }
+
   // Health check
   async health() {
     return this.client.get('/v1/health');

@@ -66,6 +66,13 @@ class Settings:
     # whole flow end to end, then flip to false to arm real charges.
     beeminder_dryrun: bool = _bool("BEEMINDER_DRYRUN", True)
 
+    # ── Stripe (the default, consumer-facing charge provider) ─────────────
+    # Samvara charges the user's card directly and keeps the funds — this is
+    # the only provider offered to ordinary users. Beeminder (above) is kept
+    # working but gated to the app owner only; see billing.py.
+    stripe_secret_key: str = os.environ.get("STRIPE_SECRET_KEY", "")
+    stripe_publishable_key: str = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+
     # ── money safety rails ───────────────────────────────────────────────
     min_stake: float = float(os.environ.get("MIN_STAKE", "1.00"))   # Beeminder floor
     max_charge: float = float(os.environ.get("MAX_CHARGE_USD", "50.00"))
@@ -109,3 +116,11 @@ class Settings:
 
 
 settings = Settings()
+
+
+def is_owner(email: str | None) -> bool:
+    """True for the app owner's account (AUTH_EMAIL) only. Shared gate for
+    admin access (security.require_admin) and for the hidden, personal-only
+    Beeminder charge provider (billing.py) — everyone else is Stripe-only."""
+    owner = (settings.auth_email or "").strip().lower()
+    return bool(owner and email and email.strip().lower() == owner)

@@ -48,9 +48,9 @@ Saṃvara is an accountability app that puts you in control. Make commitments, t
 - App-private storage on your device; other apps can't access your data.
 - GDPR & CCPA compliant. Export or delete your data anytime.
 
-**Beeminder Integration**
+**Real Charges, Securely Processed**
 
-Saṃvara charges Beeminder, the leader in quantified self. If you don't have a Beeminder account, you can create one during sign-up. Charges are real; your accountability is too.
+Saṃvara charges your card directly — through Stripe, a trusted payment processor used by millions of apps — when you slip or miss a commitment. There's no separate account to create, no middleman: you add a card once, and Saṃvara handles the rest. Charges are real; your accountability is too.
 
 **Perfect For**
 
@@ -78,7 +78,7 @@ goal setting
 self improvement
 commitment
 discipline
-beeminder
+stake tracking
 metric tracking
 personal development
 productivity
@@ -179,7 +179,7 @@ Suggest professional design; avoid generic stock icons
 ### Keywords
 (max 100 chars total, comma-separated)
 ```
-accountability,habit tracking,goal setting,motivation,beeminder,metric tracking,discipline,productivity,self improvement
+accountability,habit tracking,goal setting,motivation,stake tracking,metric tracking,discipline,productivity,self improvement
 ```
 
 ### Promotional Text
@@ -239,7 +239,7 @@ All features are text/data. No adult content (despite habit focus; all content i
 - [ ] Marketing text (170 chars max for App Store)
 - [ ] Privacy Policy URL (live, accessible)
 - [ ] Support email configured (support@samvara.app)
-- [ ] Beeminder API integration tested
+- [ ] Stripe payment integration tested (card add, successful charge, declined charge)
 - [ ] Session management (device revocation) tested
 - [ ] Notifications tested on real devices
 - [ ] Offline behavior tested (graceful degradation)
@@ -271,12 +271,12 @@ All features are text/data. No adult content (despite habit focus; all content i
 **Google Play:**
 - Typically approves within 2-4 hours
 - May reject for: privacy policy issues, unclear billing, content violations
-- May request clarification on "real charges" (explain: integrated Beeminder, not gambling)
+- May request clarification on "real charges" (explain: direct Stripe billing tied to a commitment the user set themselves, not gambling)
 
 **Apple App Store:**
 - Typically approves within 24-48 hours
 - More strict on privacy; ensure Privacy Policy is clear
-- May ask about real charges (explain: Beeminder integration, user consent)
+- May ask about real charges (explain: direct Stripe billing, user consent, card added explicitly by the user)
 - Check "Requires explanation" box if needed
 
 ---
@@ -295,7 +295,7 @@ Recommended: August 15, 2026 (post-review, aligned with marketing push)
 ## Marketing Notes
 
 - Target Reddit communities: r/accountability, r/habitsofmind, r/quantifiedself
-- Mention Beeminder integration in social media posts
+- Mention the real-stakes, direct-billing model in social media posts
 - Emphasize privacy: "No ads, no tracking, no data sold"
 - Launch announcement blog post: "Why Saṃvara is Different"
 - Email to early users: "Saṃvara is now on the App Store"

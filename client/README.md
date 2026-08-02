@@ -204,6 +204,13 @@ The client communicates with the Saṃvara backend API. Key endpoints:
 - `DELETE /v1/sessions/{deviceId}` — Revoke specific device
 - `DELETE /v1/sessions` — Revoke all sessions
 
+### Billing
+- `GET /v1/billing/status` — Current charge provider, whether a card is on file, Stripe publishable key
+- `POST /v1/billing/setup-intent` — Start adding/replacing a card; returns a Stripe SetupIntent client secret for `initPaymentSheet`/`presentPaymentSheet`
+- `POST /v1/billing/payment-method` — Report a confirmed SetupIntent id (`{ setupIntentId }`); the server resolves the actual `pm_...` id itself and saves it as the default payment method
+
+Every account defaults to (and, for anyone but the app owner, is locked to) the `samvara` charge provider — slip/miss charges are billed straight to the card added here, via Stripe. There is no client UI for any other provider; a hidden `beeminder` option exists server-side for the app owner's account only and is intentionally not exposed here. See `PaymentMethodScreen.tsx` for the add-card flow, and `App.tsx` for how the Stripe publishable key is fetched at runtime (it mirrors whichever `STRIPE_SECRET_KEY` — test or live — the backend is configured with, so this client never hardcodes it) and wraps the app in `StripeProvider`.
+
 See backend documentation for full API details.
 
 ## Build & Deployment

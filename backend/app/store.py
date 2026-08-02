@@ -34,7 +34,15 @@ from . import db
 from .config import settings as cfg
 from .ratchet import Commitment
 
-DEFAULT_USER_SETTINGS = {"apiBaseUrl": "", "recipient": "Beeminder", "totalCharged": 0}
+DEFAULT_USER_SETTINGS = {
+    "apiBaseUrl": "", "recipient": "Saṃvara", "totalCharged": 0,
+    # 'samvara' (Stripe-backed, the only choice ordinary users can set) or
+    # 'beeminder' (hidden, owner-only — see billing.py). stripePaymentMethodId
+    # is the Stripe PaymentMethod id attached as the customer's default, set
+    # by POST /v1/billing/payment-method once the client confirms a SetupIntent.
+    "chargeProvider": "samvara",
+    "stripePaymentMethodId": None,
+}
 
 
 def new_user_id() -> str:
@@ -94,6 +102,13 @@ class Store:
             ))
             return {"id": uid, "email": email, "created_at": now,
                     "timezone": default_tz, "status": "active", "deleted_at": None}
+
+    def set_stripe_customer_id(self, user_id: str, customer_id: str) -> None:
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(
+                update(db.users).where(db.users.c.id == user_id)
+                .values(stripe_customer_id=customer_id)
+            )
 
     def list_users(self) -> list[dict[str, Any]]:
         """Active users only — for the tick sweep to iterate. A deleted
@@ -585,7 +600,8 @@ class Store:
     def create_pending_charge(self, user_id: str, amount: float, kind: str,
                               commitment_id: str | None = None,
                               idempotency_key: str | None = None,
-                              note: str | None = None) -> str:
+                              note: str | None = None,
+                              provider: str = "samvara") -> str:
         """Create a pending charge (outbox pattern: write before external call).
         Idempotent: returns existing charge_id if idempotency_key already exists."""
         # Check per-charge cap before creation
@@ -612,6 +628,7 @@ class Store:
                 db.charges.insert().values(
                     id=charge_id, user_id=user_id, amount=amount, kind=kind,
                     commitment_id=commitment_id, status="pending",
+                    provider=provider,
                     idempotency_key=idempotency_key, note=note,
                     created_at=now
                 )

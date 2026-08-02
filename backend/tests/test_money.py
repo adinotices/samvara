@@ -11,7 +11,11 @@ These pin the invariants that make real charges safe to arm:
   * cap/boundary/garbage-input edges behave predictably,
   * one user's activity can never move another user's money.
 
-beeminder.charge is faked in-process, so no network and no money.
+billing.charge_for_user is faked in-process, so no network and no money. The
+test user is not the app owner (AUTH_EMAIL is a distinct address below), so
+it resolves to the default 'samvara' provider — the same dispatch path an
+ordinary consumer hits; the fake stands in for whichever provider that
+resolves to, same as it always stood in for beeminder.charge pre-Stripe.
 
 Run from backend/:  python -m pytest -q tests/test_money.py
 """
@@ -38,7 +42,7 @@ os.environ.setdefault("AUTH_EMAIL", "owner@example.com")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import delete, update as sa_update  # noqa: E402
 
-from app import beeminder, db, main, ratchet  # noqa: E402
+from app import billing, db, main, ratchet  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.store import store  # noqa: E402
@@ -58,22 +62,23 @@ TICK_HDR = {"Authorization": f"Bearer {settings.api_token}"}  # /v1/tick is a sy
 CHARGES: list[float] = []  # amounts the fake charge accepted
 
 
-def _ok_result(amount: float, note: str) -> beeminder.ChargeResult:
-    return beeminder.ChargeResult(charged=True, amount=amount, note=note,
-                                  beeminder_id="fake", dryrun=False)
+def _ok_result(amount: float, note: str) -> billing.ChargeResult:
+    return billing.ChargeResult(charged=True, amount=amount, note=note,
+                                provider="samvara", provider_charge_id="fake")
 
 
 def fake_charge(fail_for: set[float] | None = None, delay: float = 0.0):
-    """A stand-in for beeminder.charge that records amounts.
+    """A stand-in for billing.charge_for_user that records amounts.
 
     `fail_for`: amounts that raise ChargeError instead (to simulate an outage
     for one commitment but not another). `delay`: widens race windows.
     """
-    async def _charge(amount: float, note: str) -> beeminder.ChargeResult:
+    async def _charge(user: dict, amount: float, note: str,
+                      idempotency_key: str | None = None) -> billing.ChargeResult:
         if delay:
             await asyncio.sleep(delay)
         if fail_for and amount in fail_for:
-            raise beeminder.ChargeError("simulated Beeminder outage")
+            raise billing.ChargeError("simulated charge outage")
         CHARGES.append(amount)
         return _ok_result(amount, note)
     return _charge
@@ -137,7 +142,7 @@ async def _gather(*reqs):
 def test_failed_charge_leaves_state_untouched(action, monkeypatch):
     cm = mk(stake=5.0)
     before = snapshot(cm["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={5.0}))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(fail_for={5.0}))
     r = client.post(f"/v1/commitments/{cm['id']}/{action}", headers=HDR, json={})
     assert r.status_code == 402
     assert snapshot(cm["id"]) == before
@@ -148,7 +153,7 @@ def test_failed_charge_on_auto_miss_leaves_state_untouched(monkeypatch):
     cm = mk(stake=5.0)
     backdate(cm["id"])
     before = snapshot(cm["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={5.0}))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(fail_for={5.0}))
     r = client.post(f"/v1/commitments/{cm['id']}/auto-miss", headers=HDR)
     assert r.status_code == 402
     assert snapshot(cm["id"]) == before
@@ -161,7 +166,7 @@ def test_tick_reports_error_and_still_processes_others(monkeypatch):
     backdate(a["id"])
     backdate(b["id"])
     a_before = snapshot(a["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={7.0}))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(fail_for={7.0}))
     out = client.post("/v1/tick", headers=TICK_HDR).json()
     # A's outage is isolated: reported, untouched, retried by the next tick.
     assert [e["id"] for e in out["errors"]] == [a["id"]]
@@ -176,7 +181,7 @@ def test_tick_reports_error_and_still_processes_others(monkeypatch):
 def test_slip_racing_auto_miss_charges_exactly_once(monkeypatch):
     cm = mk(stake=5.0)
     backdate(cm["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge(delay=0.05))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(delay=0.05))
     rs = asyncio.run(_gather(
         ("POST", f"/v1/commitments/{cm['id']}/slip", {}),
         ("POST", f"/v1/commitments/{cm['id']}/auto-miss", None)))
@@ -190,7 +195,7 @@ def test_slip_racing_auto_miss_charges_exactly_once(monkeypatch):
 def test_double_clicked_slip_charges_exactly_once(monkeypatch):
     cm = mk(stake=5.0)
     monkeypatch.setattr(settings, "lapse_debounce_s", 10.0)
-    monkeypatch.setattr(beeminder, "charge", fake_charge(delay=0.05))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(delay=0.05))
     rs = asyncio.run(_gather(
         ("POST", f"/v1/commitments/{cm['id']}/slip", {}),
         ("POST", f"/v1/commitments/{cm['id']}/slip", {})))
@@ -201,7 +206,7 @@ def test_double_clicked_slip_charges_exactly_once(monkeypatch):
 def test_slip_on_parked_rung_is_409_not_second_charge(monkeypatch):
     cm = mk(stake=5.0)
     backdate(cm["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     assert client.post(f"/v1/commitments/{cm['id']}/auto-miss", headers=HDR).status_code == 200
     r = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
     assert r.status_code == 409
@@ -211,7 +216,7 @@ def test_slip_on_parked_rung_is_409_not_second_charge(monkeypatch):
 def test_repeated_ticks_charge_once(monkeypatch):
     cm = mk(stake=5.0)
     backdate(cm["id"])
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     first = client.post("/v1/tick", headers=TICK_HDR).json()
     second = client.post("/v1/tick", headers=TICK_HDR).json()
     assert first["charged_count"] == 1 and second["charged_count"] == 0
@@ -221,7 +226,7 @@ def test_repeated_ticks_charge_once(monkeypatch):
 def test_auto_miss_before_grace_expiry_is_a_noop(monkeypatch):
     """The client polls /auto-miss on its own clock; the server's clock rules."""
     cm = mk(stake=5.0)  # fresh rung, due days away
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     r = client.post(f"/v1/commitments/{cm['id']}/auto-miss", headers=HDR)
     assert r.status_code == 200
     assert r.json()["current_rung"]["awaiting_recommit"] is False
@@ -230,7 +235,7 @@ def test_auto_miss_before_grace_expiry_is_a_noop(monkeypatch):
 
 # ── invariant: the ledger balances ───────────────────────────────────────────
 def test_ledger_balances_across_mixed_activity(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     a = mk("A", days=3, stake=5.0)
     b = mk("B", days=2, stake=3.0)
 
@@ -258,8 +263,8 @@ def test_ledger_balances_across_mixed_activity(monkeypatch):
 
 # ── edges: cap, boundary, garbage input ──────────────────────────────────────
 def test_stake_over_cap_gets_402_and_explicit_recommit_recovers():
-    # No fake: the real beeminder.charge must refuse at validation, before any
-    # network I/O, so this runs offline.
+    # No fake: create_pending_charge's cap check must refuse before any
+    # provider is even resolved, so this runs offline.
     cm = mk(stake=60.0)  # above the $50 cap
     r = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
     assert r.status_code == 402 and "cap" in r.json()["detail"]
@@ -296,7 +301,7 @@ def test_is_past_grace_exact_boundary_is_not_past():
 
 # ── multi-tenant: one user's activity can't move another user's money ───────
 def test_tick_only_charges_the_owning_users_ledger(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     store.add_invite("money-tests-other@example.com", note=None)
     other_hdr = signin(client, "money-tests-other@example.com")
     other_id = store.get_user_by_email("money-tests-other@example.com")["id"]
@@ -350,7 +355,7 @@ def backdate_penalty_day(new_day=main.PENALTY_START_DAY) -> str:
 
 
 def test_goal_broken_bump_does_not_charge_immediately(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     r = client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
                     json={"delta": 1, "tz": "UTC"})
     assert r.status_code == 200
@@ -366,7 +371,7 @@ def test_goal_broken_bump_without_tz_falls_back_to_metrics_tz():
 
 
 def test_goal_broken_not_charged_until_day_closes(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
                 json={"delta": 1, "tz": "UTC"})
     # Relabel onto a day far in the future so its midnight can't have passed
@@ -378,7 +383,7 @@ def test_goal_broken_not_charged_until_day_closes(monkeypatch):
 
 
 def test_goal_broken_charges_net_count_once_day_closes(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     for _ in range(3):
         client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR,
                     json={"delta": 1, "tz": "UTC"})
@@ -396,7 +401,7 @@ def test_goal_broken_charges_net_count_once_day_closes(monkeypatch):
 
 
 def test_goal_broken_undo_before_close_reduces_the_charge(monkeypatch):
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": -1, "tz": "UTC"})
@@ -409,9 +414,9 @@ def test_goal_broken_undo_before_close_reduces_the_charge(monkeypatch):
 def test_goal_broken_failed_charge_leaves_state_untouched(monkeypatch):
     client.post("/v1/metrics/gaze_goal_broken/bump", headers=HDR, json={"delta": 1, "tz": "UTC"})
     day = backdate_penalty_day()
-    monkeypatch.setattr(beeminder, "charge", fake_charge(fail_for={1.0}))
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge(fail_for={1.0}))
     out = client.post("/v1/tick", headers=TICK_HDR).json()
-    assert out["penalty_errors"] == [{"day": day, "user_id": USER_ID, "error": "simulated Beeminder outage"}]
+    assert out["penalty_errors"] == [{"day": day, "user_id": USER_ID, "error": "simulated charge outage"}]
     assert total_charged() == 0
     assert store.get_penalty_day(USER_ID, day)["charged_count"] == 0
 
@@ -424,7 +429,7 @@ def test_pre_feature_tally_is_not_retroactively_charged(monkeypatch):
     pre-feature backlog the first time /tick runs post-deploy — which is
     exactly what happened in production. Days before PENALTY_START_DAY must
     never be charged."""
-    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(billing, "charge_for_user", fake_charge())
     old_day = "2026-07-10"  # before PENALTY_START_DAY, tallied pre-feature
     assert old_day < main.PENALTY_START_DAY
     with store.lock, store.engine.begin() as conn:

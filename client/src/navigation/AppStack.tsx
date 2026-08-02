@@ -8,6 +8,7 @@ import MetricsScreen from '../screens/app/MetricsScreen';
 import SettingsScreen from '../screens/app/SettingsScreen';
 import NotificationsScreen from '../screens/app/NotificationsScreen';
 import SessionsScreen from '../screens/app/SessionsScreen';
+import PaymentMethodScreen from '../screens/app/PaymentMethodScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -75,6 +76,11 @@ function SettingsStack() {
         name="Sessions"
         component={SessionsScreen}
         options={{ title: 'Active Sessions' }}
+      />
+      <Stack.Screen
+        name="PaymentMethod"
+        component={PaymentMethodScreen}
+        options={{ title: 'Payment Method' }}
       />
     </Stack.Navigator>
   );

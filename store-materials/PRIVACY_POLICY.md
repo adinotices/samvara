@@ -25,7 +25,7 @@ Saṃvara ("we," "us," "our," or "Company") operates the Saṃvara mobile applic
 
 ### 1.3 Information NOT Collected
 
-- We do NOT collect payment information (Beeminder handles payments separately)
+- We do NOT store your raw card number, CVV, or full payment details ourselves — Stripe, our payment processor, collects and tokenizes your card directly; we only hold a reference (a Stripe Customer ID and payment method token) needed to charge you for a slip/miss
 - We do NOT collect location data
 - We do NOT use third-party analytics SDKs
 - We do NOT track you across other apps or websites
@@ -38,7 +38,7 @@ We use collected information to:
 - **Authenticate You** — Verify your identity via OTP and manage your session
 - **Provide the Service** — Display your commitments, metrics, and notifications
 - **Calculate Deadlines** — Determine when commitments are due based on your timezone
-- **Charge Beeminder** — Execute charges for lapses/misses (via integrated Beeminder API)
+- **Process Charges** — Bill your saved payment method for lapses/misses (via Stripe)
 - **Improve Security** — Track active devices, detect unauthorized access, log audit events
 - **Comply with Law** — Retain audit logs for regulatory compliance (GDPR, etc.)
 - **Support & Debugging** — Respond to support requests and debug technical issues
@@ -47,19 +47,19 @@ We use collected information to:
 We do NOT use your information to:
 - Sell or share data with advertisers
 - Build profiles for targeted advertising
-- Share with third parties (except Beeminder for charges, as described)
+- Share with third parties (except Stripe for payment processing, as described)
 - Train machine learning models on your data
 
 ## 3. Data Sharing
 
-### 3.1 Beeminder Integration
+### 3.1 Payment Processing (Stripe)
 
-When you record a lapse or miss on a commitment, we charge Beeminder on your behalf. This requires sharing:
-- Charge amount
-- Commitment name/slug
-- Brief note of the lapse/miss
+When you add a payment method or record a lapse/miss on a commitment, we share the following with Stripe, our payment processor, to add your card and execute the charge:
+- Your email address (to create a Stripe Customer record)
+- Your card details (collected directly by Stripe's SDK — Saṃvara's servers never see or store your raw card number)
+- Charge amount and a brief description (e.g., commitment name, lapse/miss)
 
-Beeminder's privacy policy applies to their handling of this data: https://beeminder.com/privacy
+Stripe's privacy policy applies to their handling of this data: https://stripe.com/privacy
 
 ### 3.2 Other Sharing
 
@@ -162,7 +162,7 @@ Saṃvara operates servers in the United States. If you access Saṃvara from ou
 
 ## 11. Third-Party Links
 
-Saṃvara may link to third-party websites (e.g., Beeminder, support pages). We are not responsible for their privacy practices. Review their privacy policies before sharing information.
+Saṃvara may link to third-party websites (e.g., Stripe, support pages). We are not responsible for their privacy practices. Review their privacy policies before sharing information.
 
 ## 12. Policy Changes
 

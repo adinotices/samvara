@@ -25,7 +25,7 @@ from fastapi import Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from .auth import sha256
-from .config import settings
+from .config import is_owner, settings
 from .store import store
 
 DEV_USER_EMAIL = "dev@localhost"
@@ -94,8 +94,7 @@ async def require_admin(authorization: str | None = Header(default=None)) -> Non
     session = store.get_session(sha256(token_value))
     if session:
         user = store.get_user(session["user_id"])
-        owner = (settings.auth_email or "").strip().lower()
-        if user and owner and user["email"] == owner:
+        if user and is_owner(user["email"]):
             return
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required.")
 
@@ -155,6 +154,12 @@ class SettingsPatch(BaseModel):
     # the charging paths, never by a client patch.
     apiBaseUrl: str | None = None
     recipient: str | None = None
+    # 'samvara' (default, Stripe-backed, the only option offered to ordinary
+    # users) or 'beeminder' (hidden legacy path — the endpoint handler in
+    # main.py rejects this for anyone but the app owner). stripePaymentMethodId
+    # is deliberately absent: it's written only by POST /v1/billing/payment-method,
+    # never by a client patch, same reasoning as totalCharged above.
+    chargeProvider: str | None = None
 
 
 def error(detail: str, code: int = status.HTTP_400_BAD_REQUEST) -> HTTPException:

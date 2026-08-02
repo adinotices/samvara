@@ -55,6 +55,9 @@ users = Table(
     # window during the delete transaction itself, not as a durable state.
     Column("status", String, nullable=False, server_default="active"),
     Column("deleted_at", BigInteger, nullable=True),
+    # Stripe Customer id, set lazily on first POST /v1/billing/setup-intent.
+    # NULL until the user has ever started adding a payment method.
+    Column("stripe_customer_id", String, nullable=True),
 )
 
 # Sign-in allowlist when config.signup_mode == "invite" (the default — money

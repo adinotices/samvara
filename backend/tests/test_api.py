@@ -21,7 +21,7 @@ os.environ.setdefault("AUTH_EMAIL", "owner@example.com")
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import delete  # noqa: E402
 
-from app import db, main  # noqa: E402
+from app import db, main, stripe_billing  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.store import store  # noqa: E402
@@ -175,6 +175,92 @@ def test_settings_are_per_user():
     assert other_settings["recipient"] != "Mine"
     mine = client.get("/v1/settings", headers=HDR).json()
     assert mine["recipient"] == "Mine"
+
+
+# ── charge provider: 'samvara' (Stripe) is the only public choice ───────────
+def test_default_charge_provider_is_samvara():
+    assert client.get("/v1/settings", headers=HDR).json()["chargeProvider"] == "samvara"
+    status_body = client.get("/v1/billing/status", headers=HDR).json()
+    assert status_body["provider"] == "samvara"
+    assert status_body["canUseBeeminder"] is False
+
+
+def test_non_owner_cannot_switch_to_beeminder():
+    r = client.patch("/v1/settings", headers=HDR, json={"chargeProvider": "beeminder"})
+    assert r.status_code == 403
+    assert client.get("/v1/settings", headers=HDR).json()["chargeProvider"] == "samvara"
+
+
+def test_unknown_charge_provider_is_rejected():
+    r = client.patch("/v1/settings", headers=HDR, json={"chargeProvider": "paypal"})
+    assert r.status_code == 400
+
+
+def test_owner_can_switch_to_beeminder():
+    store.add_invite("owner@example.com", note=None)
+    owner_hdr = signin(client, "owner@example.com")
+    r = client.patch("/v1/settings", headers=owner_hdr, json={"chargeProvider": "beeminder"})
+    assert r.status_code == 200
+    assert r.json()["chargeProvider"] == "beeminder"
+    status_body = client.get("/v1/billing/status", headers=owner_hdr).json()
+    assert status_body["provider"] == "beeminder"
+    assert status_body["canUseBeeminder"] is True
+    # Clean up: don't leak a live 'beeminder' selection into other test modules.
+    client.patch("/v1/settings", headers=owner_hdr, json={"chargeProvider": "samvara"})
+
+
+# ── billing endpoints: card setup/save never trusts a client-supplied pm id ──
+def test_setup_intent_creates_customer_and_returns_client_secret(monkeypatch):
+    async def fake_create_customer(email, user_id):
+        return "cus_fake"
+
+    async def fake_create_setup_intent(customer_id):
+        assert customer_id == "cus_fake"
+        return {"clientSecret": "seti_secret", "id": "seti_1"}
+
+    monkeypatch.setattr(stripe_billing, "create_customer", fake_create_customer)
+    monkeypatch.setattr(stripe_billing, "create_setup_intent", fake_create_setup_intent)
+    r = client.post("/v1/billing/setup-intent", headers=HDR)
+    assert r.status_code == 200
+    assert r.json()["clientSecret"] == "seti_secret"
+    assert store.get_user_by_email(TEST_EMAIL)["stripe_customer_id"] == "cus_fake"
+
+
+def test_payment_method_resolves_pm_id_server_side_not_from_client(monkeypatch):
+    """The client only ever reports a SetupIntent id; the server looks up
+    the actual pm_... id itself rather than trusting anything the client
+    could claim in the request body (there's no paymentMethodId field to
+    even send)."""
+    async def fake_lookup(setup_intent_id):
+        assert setup_intent_id == "seti_2"
+        return "pm_resolved"
+
+    calls = []
+
+    async def fake_set_default(customer_id, pm_id):
+        calls.append((customer_id, pm_id))
+
+    monkeypatch.setattr(stripe_billing, "get_setup_intent_payment_method", fake_lookup)
+    monkeypatch.setattr(stripe_billing, "set_default_payment_method", fake_set_default)
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(
+            db.users.update().where(db.users.c.id == USER_ID).values(stripe_customer_id="cus_existing")
+        )
+    r = client.post("/v1/billing/payment-method", headers=HDR, json={"setupIntentId": "seti_2"})
+    assert r.status_code == 200
+    assert r.json()["stripePaymentMethodId"] == "pm_resolved"
+    assert calls == [("cus_existing", "pm_resolved")]
+
+    # Reset so the next test (no customer on file) starts from a clean slate.
+    with store.lock, store.engine.begin() as conn:
+        conn.execute(
+            db.users.update().where(db.users.c.id == USER_ID).values(stripe_customer_id=None)
+        )
+
+
+def test_payment_method_without_customer_is_409():
+    r = client.post("/v1/billing/payment-method", headers=HDR, json={"setupIntentId": "seti_x"})
+    assert r.status_code == 409
 
 
 # ── request-id middleware ────────────────────────────────────────────────────

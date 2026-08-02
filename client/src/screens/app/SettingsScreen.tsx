@@ -23,6 +23,16 @@ export default function SettingsScreen({ navigation }: any) {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Billing</Text>
+        <TouchableOpacity
+          style={styles.item}
+          onPress={() => navigation.navigate('PaymentMethod')}
+        >
+          <Text style={styles.label}>Payment Method</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Privacy & Security</Text>
         <TouchableOpacity
           style={styles.item}

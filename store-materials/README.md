@@ -7,7 +7,7 @@ Complete documentation and assets for submitting Saṃvara to Google Play Store 
 ### 1. **PRIVACY_POLICY.md** (2000+ lines)
 Comprehensive privacy policy covering:
 - Information collection and use
-- Data sharing (Beeminder only)
+- Data sharing (Stripe for payment processing only)
 - Retention policies
 - User rights (GDPR, CCPA, California)
 - Security practices
@@ -24,12 +24,12 @@ Complete terms of service covering:
 - Account management
 - Intellectual property
 - Warranties and disclaimers
-- **Financial terms & charges (critical for Beeminder integration)**
+- **Financial terms & charges (critical — Saṃvara bills the user's card directly)**
 - Dispute resolution & arbitration
 - Modification/termination policies
 
 **Key Section:** Section 8 (Financial Terms & Charges) - **READ CAREFULLY**
-- Explains that charges are REAL and via Beeminder
+- Explains that charges are REAL and billed directly by Saṃvara via Stripe
 - Clarifies refund policy
 - Warns against fraudulent use
 
@@ -119,7 +119,7 @@ Overview of all materials and usage instructions
 1. **Privacy Policy:** Live on web (https://samvara.app/privacy)
 2. **Terms of Service:** Live on web (https://samvara.app/terms)
 3. **Support Email:** support@samvara.app configured and monitored
-4. **Beeminder Integration:** Clearly documented in both listings (see APP_STORE_LISTING.md)
+4. **Direct Billing Model:** Clearly documented in both listings (see APP_STORE_LISTING.md)
 
 ### For Support
 
@@ -134,12 +134,12 @@ Overview of all materials and usage instructions
 
 ### Real Money Charges
 
-**CRITICAL:** These materials make clear that Saṃvara charges real money via Beeminder.
+**CRITICAL:** These materials make clear that Saṃvara charges real money directly to the user's card, via Stripe, and keeps the funds — Saṃvara is the merchant of record, not a pass-through to a third party.
 
 - Charges are only made when users **intentionally** slip/miss their commitments
-- Users explicitly choose their commitment stakes upfront
-- Charges go through Beeminder (separate service; Saṃvara doesn't handle payments)
-- Both stores have approved this model (with clear disclosure)
+- Users explicitly choose their commitment stakes upfront and add their own payment method
+- Charges are processed by Stripe and billed straight to Saṃvara's account
+- This is a materially bigger claim to app-store reviewers than "we forward a charge to an external service" — read SUBMISSION_GUIDE.md's note on Apple Guideline 3.1.1 (In-App Purchase) before submitting; get the real-world-service/accountability-penalty framing confirmed rather than assuming it clears review unchallenged
 
 **Never** describe charges as:
 - "Gambling" (they're not; charges are consequences tied to commitments)
@@ -167,7 +167,7 @@ Before launching on app stores, ensure:
 - [ ] Privacy Policy is live and linked
 - [ ] Terms of Service are live and linked (or embedded in app)
 - [ ] Support email is monitored (respond within 48h)
-- [ ] Beeminder integration is clearly explained in both listings
+- [ ] Direct billing model is clearly explained in both listings
 - [ ] Age rating is correct (13+ recommended for mature users)
 - [ ] Screenshots accurately represent the app
 - [ ] No misleading marketing (charges must be clear)
@@ -192,7 +192,7 @@ Before launching on app stores, ensure:
 - **Common rejections:** Unclear charges, privacy policy issues, inappropriate content
 - **If rejected:** Apple provides detailed explanation; fix and resubmit
 
-Both stores may ask for clarification on the Beeminder integration. Use the explanation in APP_STORE_LISTING.md as a template.
+Both stores may ask for clarification on the direct-billing model. Use the explanation in APP_STORE_LISTING.md as a template.
 
 ---
 
@@ -240,7 +240,7 @@ Both stores may ask for clarification on the Beeminder integration. Use the expl
 
 - **Google Play Policies:** https://play.google.com/about/developer-content-policy/
 - **Apple App Store Review Guidelines:** https://developer.apple.com/app-store/review/guidelines/
-- **Beeminder API:** https://beeminder.com/api
+- **Stripe API:** https://stripe.com/docs/api
 - **GDPR Compliance:** https://gdpr-info.eu/
 - **CCPA Compliance:** https://oag.ca.gov/privacy/ccpa
 

@@ -670,5 +670,75 @@ class Store:
         return [{"id": r[0], "commitment_id": r[1], "amount": r[2],
                  "kind": r[3], "idempotency_key": r[4], "created_at": r[5]} for r in rows]
 
+    def create_notification(self, user_id: str, notif_type: str, title: str, message: str,
+                           data: dict[str, Any] | None = None) -> str:
+        """Create a notification for the user."""
+        nid = "n_" + uuid.uuid4().hex[:12]
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.begin() as conn:
+            conn.execute(
+                db.notifications.insert().values(
+                    id=nid,
+                    user_id=user_id,
+                    type=notif_type,
+                    title=title,
+                    message=message,
+                    read=False,
+                    data=json.dumps(data) if data else None,
+                    created_at=now
+                )
+            )
+        return nid
+
+    def list_notifications(self, user_id: str, unread_only: bool = False,
+                          limit: int = 50) -> list[dict[str, Any]]:
+        """List notifications for a user, newest first."""
+        with self.lock, self.engine.connect() as conn:
+            q = select(db.notifications).where(db.notifications.c.user_id == user_id)
+            if unread_only:
+                q = q.where(db.notifications.c.read == False)
+            rows = conn.execute(
+                q.order_by(db.notifications.c.created_at.desc()).limit(limit)
+            ).all()
+        return [{"id": r[0], "type": r[2], "title": r[3], "message": r[4],
+                 "read": r[5], "data": json.loads(r[6]) if r[6] else None,
+                 "created_at": r[7]} for r in rows]
+
+    def get_notification(self, user_id: str, notification_id: str) -> dict[str, Any] | None:
+        """Get a single notification by id."""
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.notifications).where(
+                    db.notifications.c.id == notification_id,
+                    db.notifications.c.user_id == user_id
+                )
+            ).first()
+        if not row:
+            return None
+        return {"id": row[0], "type": row[2], "title": row[3], "message": row[4],
+                "read": row[5], "data": json.loads(row[6]) if row[6] else None,
+                "created_at": row[7]}
+
+    def mark_notification_read(self, user_id: str, notification_id: str) -> bool:
+        """Mark a notification as read. Returns True if found, False otherwise."""
+        with self.lock, self.engine.begin() as conn:
+            result = conn.execute(
+                update(db.notifications)
+                .where(db.notifications.c.id == notification_id,
+                       db.notifications.c.user_id == user_id)
+                .values(read=True)
+            )
+        return result.rowcount > 0
+
+    def mark_all_notifications_read(self, user_id: str) -> int:
+        """Mark all notifications for a user as read. Returns count of updated rows."""
+        with self.lock, self.engine.begin() as conn:
+            result = conn.execute(
+                update(db.notifications)
+                .where(db.notifications.c.user_id == user_id, db.notifications.c.read == False)
+                .values(read=True)
+            )
+        return result.rowcount
+
 
 store = Store(db.make_engine())

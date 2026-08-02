@@ -283,6 +283,43 @@ async def get_audit_log(user: dict[str, Any] = Depends(current_user),
     return {"audit_logs": logs}
 
 
+@app.get("/v1/notifications")
+async def list_notifications(user: dict[str, Any] = Depends(current_user),
+                            unread_only: bool = False,
+                            limit: int = 50) -> dict[str, Any]:
+    """List server-driven notifications for the user. Each notification tracks
+    an event: commitment charged, charge failed, auto-missed commitment, penalty,
+    access request approved, device login, etc. Newest first."""
+    notifs = store.list_notifications(user["id"], unread_only=unread_only,
+                                      limit=min(limit, 500))
+    return {"notifications": notifs}
+
+
+@app.get("/v1/notifications/{notification_id}")
+async def get_notification(notification_id: str,
+                          user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Retrieve a single notification by id."""
+    notif = store.get_notification(user["id"], notification_id)
+    if notif is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "notification not found")
+    return notif
+
+
+@app.post("/v1/notifications/{notification_id}/read", status_code=204, response_class=Response)
+async def mark_notification_read(notification_id: str,
+                                 user: dict[str, Any] = Depends(current_user)):
+    """Mark a notification as read."""
+    found = store.mark_notification_read(user["id"], notification_id)
+    if not found:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "notification not found")
+
+
+@app.post("/v1/notifications/read-all", status_code=204, response_class=Response)
+async def mark_all_notifications_read(user: dict[str, Any] = Depends(current_user)):
+    """Mark all notifications as read."""
+    store.mark_all_notifications_read(user["id"])
+
+
 @app.post("/v1/access-requests", status_code=204, response_class=Response)
 async def request_access(body: AccessRequestBody):
     """"Request access" from the sign-in gate's denied path.
@@ -489,8 +526,20 @@ async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -
             try:
                 charge = await beeminder.charge(charged, _note(cm, outcome))
                 store.commit_charge(charge_id, charge.beeminder_id)
+                store.create_notification(
+                    user_id, "commitment_charged",
+                    f"Commitment charged: {cm['name']}",
+                    f"You were charged ${charged} for a {outcome}.",
+                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "kind": outcome}
+                )
             except beeminder.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
+                store.create_notification(
+                    user_id, "charge_failed",
+                    f"Charge failed: {cm['name']}",
+                    f"Failed to charge ${charged}: {str(e)}",
+                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "error": str(e)}
+                )
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
@@ -543,8 +592,20 @@ async def auto_miss(cid: str, user: dict[str, Any] = Depends(current_user)) -> d
             try:
                 charge = await beeminder.charge(charged, _note(cm, "auto-missed"))
                 store.commit_charge(charge_id, charge.beeminder_id)
+                store.create_notification(
+                    user["id"], "auto_missed",
+                    f"Commitment auto-charged: {cm['name']}",
+                    f"You were charged ${charged} because your commitment was auto-missed.",
+                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged}
+                )
             except beeminder.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
+                store.create_notification(
+                    user["id"], "charge_failed",
+                    f"Auto-miss charge failed: {cm['name']}",
+                    f"Failed to charge ${charged} for auto-miss: {str(e)}",
+                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "error": str(e)}
+                )
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
             ratchet.apply_auto_miss(cm, charged)
@@ -694,8 +755,20 @@ async def tick() -> dict[str, Any]:
                     try:
                         charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
                         store.commit_charge(charge_id, charge.beeminder_id)
+                        store.create_notification(
+                            uid, "auto_missed",
+                            f"Commitment auto-charged: {cm['name']}",
+                            f"You were charged ${amount} because your commitment was auto-missed.",
+                            {"commitment_id": cid, "charge_id": charge_id, "amount": amount}
+                        )
                     except beeminder.ChargeError as e:
                         store.fail_charge(charge_id, str(e))
+                        store.create_notification(
+                            uid, "charge_failed",
+                            f"Auto-miss charge failed: {cm['name']}",
+                            f"Failed to charge ${amount} for auto-miss: {str(e)}",
+                            {"commitment_id": cid, "charge_id": charge_id, "amount": amount, "error": str(e)}
+                        )
                         errors.append({"id": cid, "user_id": uid, "error": str(e)})
                         continue
                     ratchet.apply_auto_miss(cm, amount)
@@ -707,6 +780,7 @@ async def tick() -> dict[str, Any]:
 
         # Penalty sweep: charge the "goal broken" tally for any day that has
         # closed (past midnight in its recorded tz) and isn't fully billed yet.
+        # Uses outbox pattern: create pending charge before Beeminder call.
         for pending in store.pending_penalties(uid, PENALTY_METRIC, since=PENALTY_START_DAY):
             day = pending["day"]
             async with _charge_lock:
@@ -720,9 +794,34 @@ async def tick() -> dict[str, Any]:
                 if count <= charged or now < _day_end_utc(day, tz):
                     continue
                 amount = count - charged
+                # Outbox: create pending penalty charge before external call
+                idempotency_key = f"{uid}:penalty:{day}:{count}"
+                try:
+                    charge_id = store.create_pending_charge(
+                        uid, amount, kind="penalty",
+                        idempotency_key=idempotency_key, note=_penalty_note(count, day)
+                    )
+                except ValueError as e:
+                    penalty_errors.append({"day": day, "user_id": uid, "error": str(e)})
+                    continue
+
                 try:
                     charge = await beeminder.charge(amount, _penalty_note(count, day))
+                    store.commit_charge(charge_id, charge.beeminder_id)
+                    store.create_notification(
+                        uid, "penalty",
+                        f"Penalty charge: {day}",
+                        f"You were charged ${amount} penalty for breaking your goal on {day}.",
+                        {"charge_id": charge_id, "amount": amount, "day": day, "count": count}
+                    )
                 except beeminder.ChargeError as e:
+                    store.fail_charge(charge_id, str(e))
+                    store.create_notification(
+                        uid, "charge_failed",
+                        f"Penalty charge failed: {day}",
+                        f"Failed to charge ${amount} penalty: {str(e)}",
+                        {"charge_id": charge_id, "amount": amount, "day": day, "error": str(e)}
+                    )
                     penalty_errors.append({"day": day, "user_id": uid, "error": str(e)})
                     continue
                 store.mark_penalty_charged(uid, day, count)

@@ -85,6 +85,12 @@ def create_session(email: str, device_name: str = "Unknown Device",
     device_id = store.create_device(user["id"], device_name, user_agent, ip_address)
     store.save_session(sha256(token), user["id"], _now_ms() + SESSION_TTL_MS, device_id)
     store.log_audit(user["id"], "signin", ip_address=ip_address, user_agent=user_agent)
+    store.create_notification(
+        user["id"], "device_login",
+        f"New login: {device_name}",
+        f"You signed in from {device_name}.",
+        {"device_id": device_id, "device_name": device_name, "ip_address": ip_address}
+    )
     return token
 
 

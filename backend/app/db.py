@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Float,
     ForeignKey,
@@ -180,6 +181,21 @@ charges = Table(
     Column("created_at", BigInteger, nullable=False),
     Column("committed_at", BigInteger, nullable=True),
     Index("ix_charges_user_id", "user_id"),
+)
+
+notifications = Table(
+    "notifications", metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String, ForeignKey("users.id"), nullable=False),
+    Column("type", String, nullable=False),  # 'commitment_charged', 'charge_failed', 'auto_missed', 'penalty', 'access_request', 'device_login'
+    Column("title", String, nullable=False),
+    Column("message", Text, nullable=False),
+    Column("read", Boolean, nullable=False, server_default="false"),
+    Column("data", Text, nullable=True),  # JSON with additional context (commitment_id, charge_id, etc.)
+    Column("created_at", BigInteger, nullable=False),
+    Index("ix_notifications_user_id", "user_id"),
+    Index("ix_notifications_read", "user_id", "read"),
+    Index("ix_notifications_created_at", "user_id", "created_at"),
 )
 
 

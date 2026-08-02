@@ -1,0 +1,59 @@
+# Fly.io staging deployment — mirrors deploy/fly/fly.toml (production) but
+# points at a separate app, a separate Postgres cluster, and (deliberately)
+# non-production secrets. Never share a database or Stripe keys with
+# deploy/fly/fly.toml — the whole point of this file is that testing here
+# can't touch production data or move real money.
+#
+# Deploy from the repo root:
+#   flyctl deploy ./backend -c deploy/fly/fly.staging.toml -a samvara-api-staging
+#
+# One-time setup already done for this app (see commit history / chat log):
+#   fly apps create samvara-api-staging --org personal
+#   fly postgres create --name samvara-db-staging --org personal --region iad \
+#       --initial-cluster-size 1 --vm-size shared-cpu-1x --volume-size 1
+#   fly postgres attach samvara-db-staging --app samvara-api-staging
+#   fly secrets set -a samvara-api-staging DATABASE_URL=postgresql+psycopg://...
+#     (rewritten from the postgres:// scheme fly postgres attach emits, to
+#     match this app's SQLAlchemy + psycopg v3 driver)
+#
+# Secrets this app still needs before `fly deploy` will boot cleanly
+# (see backend/app/main.py's startup_validation and config.py):
+#   fly secrets set -a samvara-api-staging \
+#     STRIPE_SECRET_KEY=sk_test_... \
+#     STRIPE_PUBLISHABLE_KEY=pk_test_... \
+#     STRIPE_WEBHOOK_SECRET=whsec_test_... \
+#     AUTH_EMAIL=you@example.com \
+#     RESEND_API_KEY=...        # only if AUTH_MODE=token below
+#
+# API_TOKEN and DATABASE_URL are already set (generated during setup).
+
+app = "samvara-api-staging"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../backend/Dockerfile"
+
+[env]
+  AUTH_MODE = "token"
+  SIGNUP_MODE = "invite"
+  ALLOWED_ORIGINS = "https://stg.samvara.app,http://localhost:19006"
+  BEEMINDER_DRYRUN = "true"
+  MIN_STAKE = "1.00"
+  MAX_CHARGE_USD = "50.00"
+  GRACE_HOURS = "24"
+  LOG_LEVEL = "DEBUG"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  # Checks DB reachability too, unlike /v1/health — matters here since this
+  # app is on Postgres, not the SQLite fallback.
+  method = "GET"
+  path = "/v1/health/ready"
+  interval = "30s"
+  timeout = "5s"

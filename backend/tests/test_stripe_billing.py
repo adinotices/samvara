@@ -244,3 +244,162 @@ def test_refund_stripe_error_raises():
     FakeAsyncClient.response = FakeResponse(400, {"error": {"message": "Invalid charge"}})
     with pytest.raises(stripe_billing.ChargeError, match="Invalid charge"):
         asyncio.run(stripe_billing.refund_charge("pi_456"))
+
+
+# ── edge cases and boundary conditions ────────────────────────────────────────
+def test_charge_at_exact_minimum():
+    charge(settings.min_stake)
+    assert len(CALLS) == 1  # should succeed
+
+
+def test_charge_one_cent_below_minimum():
+    with pytest.raises(stripe_billing.ChargeError, match="below"):
+        charge(settings.min_stake - 0.01)
+    assert CALLS == []
+
+
+def test_charge_at_exact_maximum():
+    charge(settings.max_charge)
+    assert len(CALLS) == 1  # should succeed
+
+
+def test_charge_one_cent_above_maximum():
+    with pytest.raises(stripe_billing.ChargeError, match="cap"):
+        charge(settings.max_charge + 0.01)
+    assert CALLS == []
+
+
+def test_charge_amount_precision_cents():
+    """Amounts with multiple decimal places are correctly rounded to cents."""
+    charge(5.556)  # 555.6 cents → rounds to 556 cents ($5.56)
+    assert CALLS[-1]["data"]["amount"] == "556"
+
+
+def test_charge_amount_rounds_down():
+    charge(5.554)  # 555.4 cents → rounds to 555 cents ($5.55)
+    assert CALLS[-1]["data"]["amount"] == "555"
+
+
+def test_idempotency_key_prevents_double_charge(monkeypatch):
+    """Same idempotency key returns the same PaymentIntent id."""
+    key = "commitment:slip:abc123"
+
+    # First charge
+    result1 = charge(5.0, idempotency_key=key)
+    pi_id_1 = result1.provider_charge_id
+
+    # Stripe returns the same PI for the same idempotency key
+    FakeAsyncClient.response = FakeResponse(200, {"id": pi_id_1, "status": "succeeded"})
+    result2 = charge(5.0, idempotency_key=key)
+    pi_id_2 = result2.provider_charge_id
+
+    assert pi_id_1 == pi_id_2
+    # Both should have the key header
+    assert CALLS[0]["headers"]["Idempotency-Key"] == key
+    assert CALLS[1]["headers"]["Idempotency-Key"] == key
+
+
+def test_empty_string_customer_id_refuses():
+    with pytest.raises(stripe_billing.ChargeError, match="payment method"):
+        charge(5.0, customer_id="")
+    assert CALLS == []
+
+
+def test_empty_string_payment_method_refuses():
+    with pytest.raises(stripe_billing.ChargeError, match="payment method"):
+        charge(5.0, pm_id="")
+    assert CALLS == []
+
+
+def test_description_truncated_to_500_chars():
+    """Stripe API has a 500-char limit on description."""
+    long_note = "x" * 600
+    charge(5.0, note=long_note)
+    desc = CALLS[-1]["data"]["description"]
+    assert len(desc) == 500
+    assert desc == "x" * 500
+
+
+def test_stripe_api_error_500_raises():
+    FakeAsyncClient.response = FakeResponse(500, {"error": {"message": "Server error"}})
+    with pytest.raises(stripe_billing.ChargeError, match="Server error"):
+        charge(5.0)
+
+
+def test_stripe_api_error_503_raises():
+    FakeAsyncClient.response = FakeResponse(503, {"error": {"message": "Service unavailable"}})
+    with pytest.raises(stripe_billing.ChargeError, match="Service unavailable"):
+        charge(5.0)
+
+
+def test_stripe_api_empty_response_body():
+    """Some errors return empty body; message comes from text instead."""
+    FakeAsyncClient.response = FakeResponse(402, {}, text="Card declined")
+    with pytest.raises(stripe_billing.ChargeError, match="Card declined"):
+        charge(5.0)
+
+
+def test_create_customer_idempotency():
+    """Multiple calls to create_customer should eventually succeed."""
+    FakeAsyncClient.response = FakeResponse(200, {"id": "cus_1"})
+    cid1 = asyncio.run(stripe_billing.create_customer("a@test.com", "u_1"))
+    cid2 = asyncio.run(stripe_billing.create_customer("a@test.com", "u_1"))
+    assert cid1 == cid2 == "cus_1"
+
+
+def test_refund_amount_precision():
+    """Refund amount is correctly converted to cents."""
+    FakeAsyncClient.response = FakeResponse(200, {"id": "ref_1"})
+    asyncio.run(stripe_billing.refund_charge("pi_1", 10.556))  # 1055.6 → 1056
+    assert CALLS[-1]["data"]["amount"] == "1056"
+
+
+def test_refund_zero_amount_fails():
+    """Cannot refund zero amount."""
+    FakeAsyncClient.response = FakeResponse(400, {"error": {"message": "Amount must be positive"}})
+    with pytest.raises(stripe_billing.ChargeError):
+        asyncio.run(stripe_billing.refund_charge("pi_1", 0.00))
+
+
+def test_get_payment_method_details_handles_missing_card():
+    """Payment method without card object returns nulls."""
+    FakeAsyncClient.response = FakeResponse(200, {"id": "pm_1", "card": None})
+    details = asyncio.run(stripe_billing.get_payment_method_details("pm_1"))
+    assert details == {"brand": None, "last4": None}
+
+
+def test_get_payment_method_details_partial_card_info():
+    """Handles card object with partial information."""
+    FakeAsyncClient.response = FakeResponse(200, {
+        "id": "pm_1",
+        "card": {"brand": "visa"}  # no last4
+    })
+    details = asyncio.run(stripe_billing.get_payment_method_details("pm_1"))
+    assert details["brand"] == "visa"
+    assert details["last4"] is None
+
+
+def test_delete_payment_method_404_logs_but_succeeds():
+    """Deleting nonexistent payment method logs error but doesn't raise."""
+    FakeAsyncClient.response = FakeResponse(404, {})
+    asyncio.run(stripe_billing.delete_payment_method("pm_nonexistent"))
+    # Should complete without raising
+
+
+def test_delete_customer_404_logs_but_succeeds():
+    """Deleting nonexistent customer logs error but doesn't raise."""
+    FakeAsyncClient.response = FakeResponse(404, {})
+    asyncio.run(stripe_billing.delete_customer("cus_nonexistent"))
+    # Should complete without raising
+
+
+def test_charge_with_none_customer_id():
+    with pytest.raises(stripe_billing.ChargeError, match="payment method"):
+        charge(5.0, customer_id=None)
+    assert CALLS == []
+
+
+def test_charge_with_none_payment_method_id():
+    with pytest.raises(stripe_billing.ChargeError, match="payment method"):
+        charge(5.0, pm_id=None)
+    assert CALLS == []

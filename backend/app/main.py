@@ -691,6 +691,88 @@ async def refund_charge_endpoint(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
 
 
+# ── admin charge management ──────────────────────────────────────────────────
+@app.get("/v1/admin/charges")
+async def admin_list_charges(
+    limit: int = 100,
+    user: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """List all charges (admin only). Returns paginated list of charges."""
+    with store.lock, store.engine.begin() as conn:
+        result = conn.execute(
+            db.charges.select()
+            .order_by(db.charges.c.created_at.desc())
+            .limit(limit)
+        )
+        charges = [dict(row) for row in result]
+    return {"charges": charges, "count": len(charges)}
+
+
+@app.get("/v1/admin/charges/{charge_id}")
+async def admin_get_charge(
+    charge_id: str,
+    user: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Get details of a specific charge (admin only)."""
+    with store.lock, store.engine.begin() as conn:
+        result = conn.execute(
+            db.charges.select().where(db.charges.c.id == charge_id)
+        )
+        charge = result.fetchone()
+    if not charge:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Charge {charge_id} not found")
+    return dict(charge)
+
+
+@app.delete("/v1/admin/charges/{charge_id}/refund")
+async def admin_refund_charge(
+    charge_id: str,
+    amount: float | None = None,
+    user: None = Depends(require_admin),
+) -> dict[str, Any]:
+    """Refund a charge on behalf of user (admin only).
+
+    Admin endpoint for customer support: issue refund for disputed/problem charges.
+    amount: optional refund amount in USD (full refund if omitted)
+    """
+    try:
+        # Get charge to verify it exists
+        with store.lock, store.engine.begin() as conn:
+            result = conn.execute(
+                db.charges.select().where(db.charges.c.id == charge_id)
+            )
+            charge = result.fetchone()
+
+        if not charge:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Charge {charge_id} not found")
+
+        if charge["status"] != "succeeded":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Cannot refund charge in status '{charge['status']}'",
+            )
+
+        # Issue refund through Stripe
+        provider_charge_id = charge["provider_charge_id"]
+        refund_id = await stripe_billing.refund_charge(provider_charge_id, amount)
+
+        log.info("admin refund issued", extra={
+            "charge_id": charge_id,
+            "provider_charge_id": provider_charge_id,
+            "amount": amount or charge["amount"],
+            "refund_id": refund_id,
+        })
+
+        return {
+            "refundId": refund_id,
+            "chargeId": charge_id,
+            "amount": amount or charge["amount"],
+        }
+    except stripe_billing.ChargeError as e:
+        log.error("admin refund failed", extra={"charge_id": charge_id, "error": str(e)})
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+
+
 # ── writes that charge ───────────────────────────────────────────────────────
 # Two layers, deliberately not one:
 #   * _charge_lock (asyncio.Lock) serializes every charge sequence WITHIN this

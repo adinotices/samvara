@@ -165,7 +165,7 @@ async def get_payment_method_details(payment_method_id: str) -> dict[str, str | 
     if not settings.stripe_secret_key:
         raise ChargeError("STRIPE_SECRET_KEY is not set; cannot look up payment method.")
     body = await _get(f"payment_methods/{payment_method_id}")
-    card = body.get("card", {})
+    card = body.get("card") or {}
     return {
         "brand": card.get("brand"),  # 'visa', 'mastercard', etc.
         "last4": card.get("last4"),

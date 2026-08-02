@@ -294,6 +294,37 @@ def test_refund_partial_amount(monkeypatch):
     assert received_args["amount"] == 10.50
 
 
+# ── admin charge management ──────────────────────────────────────────────────
+def test_admin_list_charges_requires_admin():
+    r = client.get("/v1/admin/charges", headers=HDR)
+    assert r.status_code == 403  # Regular user forbidden (not admin)
+
+
+def test_admin_list_charges_with_token():
+    admin_hdr = {"Authorization": f"Bearer {settings.api_token}"}
+    r = client.get("/v1/admin/charges", headers=admin_hdr)
+    assert r.status_code == 200
+    assert "charges" in r.json()
+    assert isinstance(r.json()["charges"], list)
+
+
+def test_admin_get_charge_not_found():
+    admin_hdr = {"Authorization": f"Bearer {settings.api_token}"}
+    r = client.get("/v1/admin/charges/nonexistent_id", headers=admin_hdr)
+    assert r.status_code == 404
+
+
+def test_admin_refund_charge_requires_admin():
+    r = client.delete("/v1/admin/charges/pi_123/refund", headers=HDR)
+    assert r.status_code == 403  # Regular user forbidden (not admin)
+
+
+def test_admin_refund_charge_not_found():
+    admin_hdr = {"Authorization": f"Bearer {settings.api_token}"}
+    r = client.delete("/v1/admin/charges/nonexistent_id/refund", headers=admin_hdr)
+    assert r.status_code == 404
+
+
 # ── request-id middleware ────────────────────────────────────────────────────
 def test_request_id_echoed_when_client_supplies_one():
     r = client.get("/v1/health", headers={"X-Request-Id": "client-supplied-123"})

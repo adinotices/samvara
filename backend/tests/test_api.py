@@ -267,6 +267,33 @@ def test_payment_method_without_customer_is_409():
     assert r.status_code == 409
 
 
+# ── refund endpoint ──────────────────────────────────────────────────────────
+def test_refund_charge_returns_refund_id(monkeypatch):
+    async def fake_refund(charge_id, amount=None):
+        assert charge_id == "pi_test_123"
+        return "ref_test_456"
+
+    monkeypatch.setattr(stripe_billing, "refund_charge", fake_refund)
+    r = client.delete("/v1/billing/charges/pi_test_123/refund", headers=HDR)
+    assert r.status_code == 200
+    assert r.json()["refundId"] == "ref_test_456"
+
+
+def test_refund_partial_amount(monkeypatch):
+    received_args = {}
+
+    async def fake_refund(charge_id, amount=None):
+        received_args["charge_id"] = charge_id
+        received_args["amount"] = amount
+        return "ref_test_789"
+
+    monkeypatch.setattr(stripe_billing, "refund_charge", fake_refund)
+    r = client.delete("/v1/billing/charges/pi_test_xyz/refund?amount=10.50", headers=HDR)
+    assert r.status_code == 200
+    assert received_args["charge_id"] == "pi_test_xyz"
+    assert received_args["amount"] == 10.50
+
+
 # ── request-id middleware ────────────────────────────────────────────────────
 def test_request_id_echoed_when_client_supplies_one():
     r = client.get("/v1/health", headers={"X-Request-Id": "client-supplied-123"})

@@ -674,18 +674,17 @@ async def billing_remove_payment_method(user: dict[str, Any] = Depends(current_u
     })
 
 
-class RefundRequest(BaseModel):
-    amount: float | None = None
-
-
 @app.delete("/v1/billing/charges/{charge_id}/refund")
 async def refund_charge_endpoint(
-    charge_id: str, body: RefundRequest,
+    charge_id: str, amount: float | None = None,
     user: dict[str, Any] = Depends(current_user)
 ) -> dict[str, str]:
-    """Refund a charge (full or partial). Returns refund_id."""
+    """Refund a charge (full or partial). Returns refund_id.
+
+    amount: optional refund amount in USD (full refund if omitted)
+    """
     try:
-        refund_id = await stripe_billing.refund_charge(charge_id, body.amount)
+        refund_id = await stripe_billing.refund_charge(charge_id, amount)
         return {"refundId": refund_id}
     except stripe_billing.ChargeError as e:
         log.error("refund failed", extra={"charge_id": charge_id, "error": str(e)})

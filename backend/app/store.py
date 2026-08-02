@@ -426,12 +426,14 @@ class Store:
             return False
 
     # ── sessions (token stored hashed; point at a user, not an email) ─────
-    def save_session(self, token_hash: str, user_id: str, expires_at: int) -> None:
+    def save_session(self, token_hash: str, user_id: str, expires_at: int,
+                     device_id: str | None = None) -> None:
         now = int(time.time() * 1000)
         with self.lock, self.engine.begin() as conn:
             conn.execute(delete(db.sessions).where(db.sessions.c.expires_at <= now))
             conn.execute(db.sessions.insert().values(
                 token_hash=token_hash, user_id=user_id, expires_at=expires_at,
+                device_id=device_id, created_at=now,
             ))
 
     def delete_session(self, token_hash: str) -> None:
@@ -446,6 +448,138 @@ class Store:
                 .where(db.sessions.c.token_hash == token_hash, db.sessions.c.expires_at > now)
             ).first()
         return {"user_id": row[0], "expires_at": row[1]} if row else None
+
+    # ── device tracking ──────────────────────────────────────────────────
+    def create_device(self, user_id: str, name: str, user_agent: str | None = None,
+                      ip_address: str | None = None) -> str:
+        device_id = "d_" + uuid.uuid4().hex[:12]
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                db.devices.insert().values(
+                    id=device_id, user_id=user_id, name=name,
+                    user_agent=user_agent, ip_address=ip_address,
+                    created_at=now, last_seen_at=now
+                )
+            )
+            conn.commit()
+        return device_id
+
+    def list_devices(self, user_id: str) -> list[dict[str, Any]]:
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.devices.c.id, db.devices.c.name, db.devices.c.user_agent,
+                       db.devices.c.ip_address, db.devices.c.created_at, db.devices.c.last_seen_at)
+                .where(db.devices.c.user_id == user_id)
+                .order_by(db.devices.c.last_seen_at.desc())
+            ).all()
+        return [{"id": r[0], "name": r[1], "user_agent": r[2], "ip_address": r[3],
+                 "created_at": r[4], "last_seen_at": r[5]} for r in rows]
+
+    def delete_device(self, user_id: str, device_id: str) -> bool:
+        with self.lock, self.engine.connect() as conn:
+            result = conn.execute(
+                delete(db.devices).where(
+                    db.devices.c.user_id == user_id, db.devices.c.id == device_id
+                )
+            )
+            conn.commit()
+        return result.rowcount > 0
+
+    def delete_all_devices(self, user_id: str) -> int:
+        with self.lock, self.engine.connect() as conn:
+            result = conn.execute(
+                delete(db.devices).where(db.devices.c.user_id == user_id)
+            )
+            conn.commit()
+        return result.rowcount
+
+    def update_device_last_seen(self, device_id: str) -> None:
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                update(db.devices).where(db.devices.c.id == device_id)
+                .values(last_seen_at=now)
+            )
+            conn.commit()
+
+    # ── audit logging ────────────────────────────────────────────────────
+    def log_audit(self, user_id: str, action: str, resource_type: str | None = None,
+                  resource_id: str | None = None, details: dict | None = None,
+                  ip_address: str | None = None, user_agent: str | None = None) -> None:
+        log_id = "al_" + uuid.uuid4().hex[:12]
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                db.audit_logs.insert().values(
+                    id=log_id, user_id=user_id, action=action,
+                    resource_type=resource_type, resource_id=resource_id,
+                    details=json.dumps(details) if details else None,
+                    ip_address=ip_address, user_agent=user_agent,
+                    created_at=now
+                )
+            )
+            conn.commit()
+
+    def list_audit_logs(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.audit_logs.c.id, db.audit_logs.c.action,
+                       db.audit_logs.c.resource_type, db.audit_logs.c.resource_id,
+                       db.audit_logs.c.details, db.audit_logs.c.created_at)
+                .where(db.audit_logs.c.user_id == user_id)
+                .order_by(db.audit_logs.c.created_at.desc())
+                .limit(limit)
+            ).all()
+        return [{"id": r[0], "action": r[1], "resource_type": r[2], "resource_id": r[3],
+                 "details": json.loads(r[4]) if r[4] else None, "created_at": r[5]} for r in rows]
+
+    # ── data export (compliance) ─────────────────────────────────────────
+    def export_user_data(self, user_id: str) -> dict[str, Any]:
+        with self.lock, self.engine.connect() as conn:
+            user_row = conn.execute(
+                select(db.users.c.id, db.users.c.email, db.users.c.timezone,
+                       db.users.c.created_at)
+                .where(db.users.c.id == user_id)
+            ).first()
+            if not user_row:
+                return {}
+
+            commitments = conn.execute(
+                select(db.commitments.c.data)
+                .where(db.commitments.c.user_id == user_id)
+            ).all()
+
+            metric_days = conn.execute(
+                select(db.metric_days.c.metric, db.metric_days.c.day, db.metric_days.c.count)
+                .where(db.metric_days.c.user_id == user_id)
+            ).all()
+
+            charges = conn.execute(
+                select(db.charges.c.id, db.charges.c.commitment_id, db.charges.c.amount,
+                       db.charges.c.kind, db.charges.c.status, db.charges.c.created_at)
+                .where(db.charges.c.user_id == user_id)
+            ).all()
+
+            settings = conn.execute(
+                select(db.user_settings.c.data)
+                .where(db.user_settings.c.user_id == user_id)
+            ).first()
+
+        return {
+            "user": {
+                "id": user_row[0],
+                "email": user_row[1],
+                "timezone": user_row[2],
+                "created_at": user_row[3],
+                "exported_at": int(time.time() * 1000),
+            },
+            "commitments": [json.loads(c[0]) for c in commitments],
+            "metrics": [{"metric": m[0], "day": m[1], "count": m[2]} for m in metric_days],
+            "charges": [{"id": c[0], "commitment_id": c[1], "amount": c[2],
+                        "kind": c[3], "status": c[4], "created_at": c[5]} for c in charges],
+            "settings": json.loads(settings[0]) if settings else DEFAULT_USER_SETTINGS,
+        }
 
 
 store = Store(db.make_engine())

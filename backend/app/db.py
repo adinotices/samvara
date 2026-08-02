@@ -79,8 +79,40 @@ sessions = Table(
     "sessions", metadata,
     Column("token_hash", String, primary_key=True),
     Column("user_id", String, ForeignKey("users.id"), nullable=False),
+    Column("device_id", String, ForeignKey("devices.id"), nullable=True),
     Column("expires_at", BigInteger, nullable=False),
+    Column("created_at", BigInteger, nullable=False),
     Index("ix_sessions_user_id", "user_id"),
+    Index("ix_sessions_device_id", "device_id"),
+)
+
+# ── device tracking (session device info for session listing and revoke-all) ──
+devices = Table(
+    "devices", metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String, ForeignKey("users.id"), nullable=False),
+    Column("name", String, nullable=False),  # "Chrome on macOS", "Mobile Safari", etc.
+    Column("user_agent", String, nullable=True),
+    Column("ip_address", String, nullable=True),
+    Column("created_at", BigInteger, nullable=False),
+    Column("last_seen_at", BigInteger, nullable=False),
+    Index("ix_devices_user_id", "user_id"),
+)
+
+# ── audit logging (compliance: track user actions for data export and deletion) ──
+audit_logs = Table(
+    "audit_logs", metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String, ForeignKey("users.id"), nullable=False),
+    Column("action", String, nullable=False),  # 'signin', 'signout', 'commitment_create', etc.
+    Column("resource_type", String, nullable=True),  # 'commitment', 'settings', 'account'
+    Column("resource_id", String, nullable=True),
+    Column("details", Text, nullable=True),  # JSON
+    Column("ip_address", String, nullable=True),
+    Column("user_agent", String, nullable=True),
+    Column("created_at", BigInteger, nullable=False),
+    Index("ix_audit_logs_user_id", "user_id"),
+    Index("ix_audit_logs_created_at", "created_at"),
 )
 
 # ── access requests (sign-in gate's "request access" form) ──────────────────

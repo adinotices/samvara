@@ -35,9 +35,10 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
-from . import auth, beeminder, logging_config, ratchet
+from . import auth, beeminder, db, logging_config, ratchet
 from .config import settings
 from .security import (
     AccessRequestBody,
@@ -58,6 +59,29 @@ from .store import store
 
 logging_config.setup(settings.log_level)
 log = logging.getLogger("samvara")
+
+def _parse_device_name(user_agent: str) -> str:
+    """Parse a friendly device name from the user-agent string."""
+    if not user_agent:
+        return "Unknown Device"
+    ua = user_agent.lower()
+    if "chrome" in ua:
+        if "mobile" in ua or "android" in ua:
+            return "Chrome Mobile"
+        return "Chrome"
+    if "firefox" in ua:
+        if "mobile" in ua:
+            return "Firefox Mobile"
+        return "Firefox"
+    if "safari" in ua:
+        if "mobile" in ua or "iphone" in ua:
+            return "Mobile Safari"
+        return "Safari"
+    if "edg" in ua:
+        return "Edge"
+    if "android" in ua:
+        return "Android Browser"
+    return "Unknown Device"
 
 app = FastAPI(title="Samvara API", version="1.0.0")
 
@@ -156,7 +180,7 @@ async def send_code(body: SendCodeBody):
 
 
 @app.post("/v1/auth/verify-code")
-async def verify_code(body: VerifyCodeBody) -> dict[str, str]:
+async def verify_code(body: VerifyCodeBody, request: Request) -> dict[str, str]:
     """Verify an OTP and return a 30-day session token. First successful
     verify for a new address creates the account (see auth.create_session)."""
     if settings.auth_mode == "none":
@@ -166,7 +190,10 @@ async def verify_code(body: VerifyCodeBody) -> dict[str, str]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
     if not auth.verify_and_consume_otp(email, body.code):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
-    return {"token": auth.create_session(email)}
+    user_agent = request.headers.get("user-agent", "")
+    ip_address = request.client.host if request.client else None
+    device_name = _parse_device_name(user_agent)
+    return {"token": auth.create_session(email, device_name, user_agent, ip_address)}
 
 
 @app.post("/v1/auth/sign-out", status_code=204, response_class=Response)
@@ -193,7 +220,67 @@ async def delete_account(user: dict[str, Any] = Depends(current_user)) -> Respon
     underlying primitive it calls. Charge history is the one thing NOT erased
     by this today — see the caveat on Store.delete_user."""
     store.delete_user(user["id"])
+    store.log_audit(user["id"], "account_deleted")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── session management ───────────────────────────────────────────────────
+@app.get("/v1/sessions")
+async def list_sessions(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """List all active devices/sessions for this account with creation and
+    last-seen timestamps. Used by the account settings page to show login
+    locations and allow revoking specific sessions."""
+    devices = store.list_devices(user["id"])
+    return {"devices": devices}
+
+
+@app.delete("/v1/sessions/{device_id}", status_code=204, response_class=Response)
+async def revoke_device(device_id: str, user: dict[str, Any] = Depends(current_user)):
+    """Revoke all sessions associated with a specific device, immediately
+    logging the user out on that device."""
+    store.delete_device(user["id"], device_id)
+    # Delete all sessions for this device
+    with store.engine.connect() as conn:
+        conn.execute(
+            delete(db.sessions).where(db.sessions.c.device_id == device_id)
+        )
+        conn.commit()
+    store.log_audit(user["id"], "session_revoked", resource_type="device",
+                   resource_id=device_id)
+
+
+@app.delete("/v1/sessions", status_code=204, response_class=Response)
+async def revoke_all_sessions(user: dict[str, Any] = Depends(current_user)):
+    """Revoke all sessions across all devices, immediately logging out
+    everywhere."""
+    store.delete_all_devices(user["id"])
+    with store.engine.connect() as conn:
+        conn.execute(
+            delete(db.sessions).where(db.sessions.c.user_id == user["id"])
+        )
+        conn.commit()
+    store.log_audit(user["id"], "all_sessions_revoked")
+
+
+# ── data export (compliance) ───────────────────────────────────────────────
+@app.get("/v1/data-export")
+async def export_user_data(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Export all user data as JSON (commitments, metrics, charges, settings).
+    Supports GDPR and app store privacy requirements for data download/portability."""
+    data = store.export_user_data(user["id"])
+    store.log_audit(user["id"], "data_export")
+    return data
+
+
+# ── audit log ───────────────────────────────────────────────────────────────
+@app.get("/v1/audit-log")
+async def get_audit_log(user: dict[str, Any] = Depends(current_user),
+                        limit: int = 50) -> dict[str, Any]:
+    """Retrieve audit log for compliance: list of user actions with timestamps,
+    IP addresses, and user agents. Supports store privacy requirements for
+    showing user activity history."""
+    logs = store.list_audit_logs(user["id"], limit=min(limit, 500))
+    return {"audit_logs": logs}
 
 
 @app.post("/v1/access-requests", status_code=204, response_class=Response)

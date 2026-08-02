@@ -74,13 +74,17 @@ def signin_allowed(email: str) -> bool:
     return store.is_invited(email)
 
 
-def create_session(email: str) -> str:
+def create_session(email: str, device_name: str = "Unknown Device",
+                   user_agent: str | None = None, ip_address: str | None = None) -> str:
     """Get-or-create the user for this email (first successful sign-in IS
     signup — there's no separate registration step) and issue a session
     token for them. Caller must have already checked signin_allowed()."""
     user = store.get_or_create_user(email, settings.metrics_tz)
     token = secrets.token_hex(32)
-    store.save_session(sha256(token), user["id"], _now_ms() + SESSION_TTL_MS)
+    # Create device record for session tracking
+    device_id = store.create_device(user["id"], device_name, user_agent, ip_address)
+    store.save_session(sha256(token), user["id"], _now_ms() + SESSION_TTL_MS, device_id)
+    store.log_audit(user["id"], "signin", ip_address=ip_address, user_agent=user_agent)
     return token
 
 

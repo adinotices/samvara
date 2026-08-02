@@ -438,8 +438,8 @@ _recent_lapse: dict[str, float] = {}
 async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
     """Shared body for slip ('lapse') and miss ('missed').
 
-    Charge order matters: on a live (non-dry) run we charge Beeminder before
-    mutating or persisting, so a failed charge leaves state untouched.
+    Charge order: create pending record, charge Beeminder, commit or fail the record.
+    Outbox pattern ensures: charge succeeds → ledger records it; charge fails → nothing.
     """
     cm = _require(user_id, cid)
     cur = cm["current_rung"]
@@ -475,9 +475,22 @@ async def _slip_or_miss(user_id: str, cid: str, body: LapseBody, outcome: str) -
             result["charged"] = charged
             result["recommit"] = {"days": new_days, "stake": new_stake}
 
+            # Outbox pattern: create pending charge record before external call
+            idempotency_key = f"{cid}:{outcome}:{cur.get('seq', 0)}"
+            try:
+                charge_id = store.create_pending_charge(
+                    user_id, charged, kind=outcome, commitment_id=cid,
+                    idempotency_key=idempotency_key, note=_note(cm, outcome)
+                )
+            except ValueError as e:
+                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
+
+            # Charge Beeminder (external, can fail)
             try:
                 charge = await beeminder.charge(charged, _note(cm, outcome))
+                store.commit_charge(charge_id, charge.beeminder_id)
             except beeminder.ChargeError as e:
+                store.fail_charge(charge_id, str(e))
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
@@ -517,9 +530,21 @@ async def auto_miss(cid: str, user: dict[str, Any] = Depends(current_user)) -> d
             r = cm["current_rung"]
 
             charged = r["stake"]
+            # Outbox: create pending charge before external call
+            idempotency_key = f"{cid}:auto-missed:{r.get('seq', 0)}"
+            try:
+                charge_id = store.create_pending_charge(
+                    user["id"], charged, kind="auto-missed", commitment_id=cid,
+                    idempotency_key=idempotency_key, note=_note(cm, "auto-missed")
+                )
+            except ValueError as e:
+                raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
+
             try:
                 charge = await beeminder.charge(charged, _note(cm, "auto-missed"))
+                store.commit_charge(charge_id, charge.beeminder_id)
             except beeminder.ChargeError as e:
+                store.fail_charge(charge_id, str(e))
                 raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
             ratchet.apply_auto_miss(cm, charged)
@@ -655,9 +680,22 @@ async def tick() -> dict[str, Any]:
                     if cm is None or not ratchet.is_past_grace(cm, settings.grace_ms):
                         continue
                     amount = cm["current_rung"]["stake"]
+                    # Outbox: create pending charge before external call
+                    idempotency_key = f"{cid}:auto-missed-tick:{cm.get('seq', 0)}"
+                    try:
+                        charge_id = store.create_pending_charge(
+                            uid, amount, kind="auto-missed", commitment_id=cid,
+                            idempotency_key=idempotency_key, note=_note(cm, "auto-missed (tick)")
+                        )
+                    except ValueError as e:
+                        errors.append({"id": cid, "user_id": uid, "error": str(e)})
+                        continue
+
                     try:
                         charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
+                        store.commit_charge(charge_id, charge.beeminder_id)
                     except beeminder.ChargeError as e:
+                        store.fail_charge(charge_id, str(e))
                         errors.append({"id": cid, "user_id": uid, "error": str(e)})
                         continue
                     ratchet.apply_auto_miss(cm, amount)

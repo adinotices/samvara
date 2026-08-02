@@ -581,5 +581,94 @@ class Store:
             "settings": json.loads(settings[0]) if settings else DEFAULT_USER_SETTINGS,
         }
 
+    # ── charge ledger (outbox pattern) ───────────────────────────────────────
+    def create_pending_charge(self, user_id: str, amount: float, kind: str,
+                              commitment_id: str | None = None,
+                              idempotency_key: str | None = None,
+                              note: str | None = None) -> str:
+        """Create a pending charge (outbox pattern: write before external call).
+        Idempotent: returns existing charge_id if idempotency_key already exists."""
+        # Check per-charge cap before creation
+        if amount > cfg.max_charge:
+            raise ValueError(
+                f"Charge ${amount:.2f} exceeds cap ${cfg.max_charge:.2f}"
+            )
+
+        if idempotency_key:
+            # Idempotency: return existing charge if key exists
+            with self.lock, self.engine.connect() as conn:
+                row = conn.execute(
+                    select(db.charges.c.id).where(
+                        db.charges.c.idempotency_key == idempotency_key
+                    )
+                ).first()
+                if row:
+                    return row[0]
+
+        charge_id = "ch_" + uuid.uuid4().hex[:12]
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                db.charges.insert().values(
+                    id=charge_id, user_id=user_id, amount=amount, kind=kind,
+                    commitment_id=commitment_id, status="pending",
+                    idempotency_key=idempotency_key, note=note,
+                    created_at=now
+                )
+            )
+            conn.commit()
+        return charge_id
+
+    def commit_charge(self, charge_id: str, provider_charge_id: str | None = None) -> None:
+        """Move charge from pending to committed (after Beeminder call succeeds)."""
+        now = int(time.time() * 1000)
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                update(db.charges).where(db.charges.c.id == charge_id).values(
+                    status="committed", provider_charge_id=provider_charge_id,
+                    committed_at=now
+                )
+            )
+            conn.commit()
+
+    def fail_charge(self, charge_id: str, error_details: str | None = None) -> None:
+        """Move charge from pending to failed."""
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                update(db.charges).where(db.charges.c.id == charge_id).values(
+                    status="failed", note=error_details
+                )
+            )
+            conn.commit()
+
+    def get_committed_total(self, user_id: str) -> float:
+        """Sum of all committed charges for this user."""
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(func.coalesce(func.sum(db.charges.c.amount), 0.0))
+                .where(db.charges.c.user_id == user_id,
+                       db.charges.c.status == "committed")
+            ).first()
+        return float(row[0]) if row else 0.0
+
+    def check_aggregate_cap(self, user_id: str, additional_amount: float = 0.0) -> bool:
+        """Return True if (existing committed + additional_amount) would exceed cap.
+        Used for enforcement: reject if would exceed limit."""
+        # For now, no aggregate cap (only per-charge cap). Can add configurable
+        # limit later if needed (e.g., "max $X per day/month").
+        return False
+
+    def get_pending_charges(self, user_id: str) -> list[dict[str, Any]]:
+        """Return all pending charges for retry/recovery."""
+        with self.lock, self.engine.connect() as conn:
+            rows = conn.execute(
+                select(db.charges.c.id, db.charges.c.commitment_id, db.charges.c.amount,
+                       db.charges.c.kind, db.charges.c.idempotency_key, db.charges.c.created_at)
+                .where(db.charges.c.user_id == user_id, db.charges.c.status == "pending")
+                .order_by(db.charges.c.created_at.asc())
+            ).all()
+        return [{"id": r[0], "commitment_id": r[1], "amount": r[2],
+                 "kind": r[3], "idempotency_key": r[4], "created_at": r[5]} for r in rows]
+
 
 store = Store(db.make_engine())

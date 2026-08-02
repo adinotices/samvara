@@ -561,9 +561,16 @@ async def update_settings(patch: SettingsPatch, user: dict[str, Any] = Depends(c
 @app.get("/v1/billing/status")
 async def billing_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     s = store.get_settings(user["id"])
+    card_brand = s.get("cardBrand")
+    card_last4 = s.get("cardLast4")
+    card_display = None
+    if card_brand and card_last4:
+        # Format for display: "Visa •••• 4242"
+        card_display = f"{card_brand.capitalize()} •••• {card_last4}"
     return {
         "provider": billing.resolve_provider(user),
         "hasPaymentMethod": bool(s.get("stripePaymentMethodId")),
+        "cardDisplay": card_display,  # e.g. "Visa •••• 4242" or None
         "canUseBeeminder": is_owner(user["email"]),
         "publishableKey": settings.stripe_publishable_key,
     }
@@ -604,9 +611,15 @@ async def billing_save_payment_method(
     try:
         payment_method_id = await stripe_billing.get_setup_intent_payment_method(body.setupIntentId)
         await stripe_billing.set_default_payment_method(customer_id, payment_method_id)
+        # Fetch card details for display (brand, last4)
+        card_details = await stripe_billing.get_payment_method_details(payment_method_id)
     except stripe_billing.ChargeError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
-    return store.update_settings(user["id"], {"stripePaymentMethodId": payment_method_id})
+    return store.update_settings(user["id"], {
+        "stripePaymentMethodId": payment_method_id,
+        "cardBrand": card_details.get("brand"),
+        "cardLast4": card_details.get("last4"),
+    })
 
 
 # ── writes that charge ───────────────────────────────────────────────────────

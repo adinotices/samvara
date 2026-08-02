@@ -13,6 +13,7 @@ import { apiClient } from '../../services/apiClient';
 interface BillingStatus {
   provider: string;
   hasPaymentMethod: boolean;
+  cardDisplay: string | null;  // e.g. "Visa •••• 4242"
   canUseBeeminder: boolean;
   publishableKey: string;
 }
@@ -101,7 +102,7 @@ export default function PaymentMethodScreen() {
       <View style={styles.card}>
         <Text style={styles.label}>Payment method</Text>
         <Text style={styles.value}>
-          {status?.hasPaymentMethod ? 'Card on file' : 'No card on file'}
+          {status?.cardDisplay || 'No card on file'}
         </Text>
       </View>
 

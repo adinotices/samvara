@@ -235,6 +235,9 @@ def test_payment_method_resolves_pm_id_server_side_not_from_client(monkeypatch):
         assert setup_intent_id == "seti_2"
         return "pm_resolved"
 
+    async def fake_get_details(pm_id):
+        return {"brand": "visa", "last4": "4242"}
+
     calls = []
 
     async def fake_set_default(customer_id, pm_id):
@@ -242,6 +245,7 @@ def test_payment_method_resolves_pm_id_server_side_not_from_client(monkeypatch):
 
     monkeypatch.setattr(stripe_billing, "get_setup_intent_payment_method", fake_lookup)
     monkeypatch.setattr(stripe_billing, "set_default_payment_method", fake_set_default)
+    monkeypatch.setattr(stripe_billing, "get_payment_method_details", fake_get_details)
     with store.lock, store.engine.begin() as conn:
         conn.execute(
             db.users.update().where(db.users.c.id == USER_ID).values(stripe_customer_id="cus_existing")

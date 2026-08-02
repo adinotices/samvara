@@ -159,6 +159,19 @@ async def set_default_payment_method(customer_id: str, payment_method_id: str) -
     })
 
 
+async def get_payment_method_details(payment_method_id: str) -> dict[str, str | None]:
+    """Retrieve card details (brand, last4) for display to the user.
+    Returns dict with 'brand' and 'last4' keys."""
+    if not settings.stripe_secret_key:
+        raise ChargeError("STRIPE_SECRET_KEY is not set; cannot look up payment method.")
+    body = await _get(f"payment_methods/{payment_method_id}")
+    card = body.get("card", {})
+    return {
+        "brand": card.get("brand"),  # 'visa', 'mastercard', etc.
+        "last4": card.get("last4"),
+    }
+
+
 async def charge(customer_id: str, payment_method_id: str, amount: float,
                  note: str, idempotency_key: str | None = None) -> ChargeResult:
     """Charge `amount` USD to the customer's saved card, off-session (no user

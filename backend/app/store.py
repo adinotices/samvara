@@ -42,6 +42,10 @@ DEFAULT_USER_SETTINGS = {
     # by POST /v1/billing/payment-method once the client confirms a SetupIntent.
     "chargeProvider": "samvara",
     "stripePaymentMethodId": None,
+    # Card details stored for display (e.g., "visa •••• 4242" for user trust).
+    # Set when the card is saved, cleared when removed.
+    "cardBrand": None,  # 'visa' | 'mastercard' | etc
+    "cardLast4": None,  # Last 4 digits of the card
 }
 
 

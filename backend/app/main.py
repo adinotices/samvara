@@ -140,6 +140,24 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_validation():
+    """Validate critical configuration on startup. Stripe is not optional for
+    ordinary users — it's the default charge provider."""
+    errors = []
+
+    if not settings.stripe_secret_key:
+        errors.append("STRIPE_SECRET_KEY is not set. Stripe is required for charging.")
+    if not settings.stripe_publishable_key:
+        errors.append("STRIPE_PUBLISHABLE_KEY is not set. This is needed for client-side card setup.")
+
+    if errors:
+        for error in errors:
+            log.error("startup validation failed", extra={"error": error})
+        if settings.auth_mode != "none":  # only error in production-like mode
+            raise RuntimeError("Startup validation failed: " + "; ".join(errors))
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 def _require(user_id: str, cid: str) -> dict[str, Any]:
     cm = store.get_commitment(user_id, cid)

@@ -143,9 +143,17 @@ def test_http_error_status_raises_charge_error():
         charge(5.0)
 
 
-def test_non_succeeded_status_raises_charge_error():
+def test_requires_action_returns_pending_charge():
     FakeAsyncClient.response = FakeResponse(200, {"id": "pi_2", "status": "requires_action"})
-    with pytest.raises(stripe_billing.ChargeError, match="requires_action"):
+    result = charge(5.0)
+    assert result.charged is False
+    assert result.status == "requires_action"
+    assert result.provider_charge_id == "pi_2"
+
+
+def test_non_succeeded_non_requires_action_status_raises_charge_error():
+    FakeAsyncClient.response = FakeResponse(200, {"id": "pi_3", "status": "processing"})
+    with pytest.raises(stripe_billing.ChargeError, match="processing"):
         charge(5.0)
 
 

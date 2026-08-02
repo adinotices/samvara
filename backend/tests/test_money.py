@@ -64,7 +64,7 @@ CHARGES: list[float] = []  # amounts the fake charge accepted
 
 def _ok_result(amount: float, note: str) -> billing.ChargeResult:
     return billing.ChargeResult(charged=True, amount=amount, note=note,
-                                provider="samvara", provider_charge_id="fake")
+                                provider="samvara", provider_charge_id="fake", status="succeeded")
 
 
 def fake_charge(fail_for: set[float] | None = None, delay: float = 0.0):

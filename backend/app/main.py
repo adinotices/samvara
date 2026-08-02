@@ -28,6 +28,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import hashlib
+import hmac
+import json
 import logging
 import secrets
 import time
@@ -398,6 +401,101 @@ async def readiness(response: Response) -> dict[str, Any]:
     return {"status": "ok" if db_ok else "unavailable", "checks": {"db": db_ok}}
 
 
+# ── Stripe webhooks (SCA/3D Secure) ───────────────────────────────────────────
+@app.post("/v1/billing/webhook/stripe")
+async def stripe_webhook(request: Request, response: Response) -> dict[str, Any]:
+    """Webhook endpoint for Stripe payment_intent events. Verifies the signature
+    and commits pending charges once authentication succeeds."""
+    if not settings.stripe_webhook_secret:
+        log.warning("stripe webhook called but STRIPE_WEBHOOK_SECRET not set")
+        return {"status": "error", "message": "Webhook not configured"}
+
+    # Get the raw body for signature verification
+    body = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+
+    # Verify signature: Stripe format is t=timestamp,v1=signature
+    try:
+        parts = {}
+        for part in signature.split(","):
+            key, value = part.split("=", 1)
+            parts[key] = value
+        timestamp = parts.get("t", "")
+        signed_content = f"{timestamp}.{body.decode('utf-8')}"
+        expected_sig = hmac.new(
+            settings.stripe_webhook_secret.encode("utf-8"),
+            signed_content.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+        provided_sig = parts.get("v1", "")
+
+        if not hmac.compare_digest(expected_sig, provided_sig):
+            log.error("stripe webhook signature verification failed")
+            response.status_code = status.HTTP_401_UNAUTHORIZED
+            return {"status": "error", "message": "Signature verification failed"}
+    except Exception as e:
+        log.error("stripe webhook signature parsing error", extra={"error": str(e)})
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"status": "error", "message": "Invalid signature format"}
+
+    # Parse the event
+    try:
+        event = json.loads(body)
+    except json.JSONDecodeError:
+        log.error("stripe webhook invalid json")
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"status": "error", "message": "Invalid JSON"}
+
+    event_type = event.get("type", "")
+    data = event.get("data", {}).get("object", {})
+    payment_intent_id = data.get("id", "")
+
+    log.info("stripe webhook received", extra={
+        "event_type": event_type, "payment_intent_id": payment_intent_id
+    })
+
+    # Handle payment_intent.succeeded: commit the pending charge
+    if event_type == "payment_intent.succeeded":
+        if not payment_intent_id:
+            log.error("stripe webhook payment_intent.succeeded missing id")
+            response.status_code = status.HTTP_400_BAD_REQUEST
+            return {"status": "error", "message": "Missing payment intent id"}
+
+        # Find the pending charge with this payment_intent_id
+        try:
+            charge = store.get_charge_by_provider_id(payment_intent_id, provider="samvara")
+            if not charge:
+                log.warning("stripe webhook: no pending charge found", extra={
+                    "payment_intent_id": payment_intent_id
+                })
+                return {"status": "ok", "message": "No pending charge found"}
+
+            # Commit the charge
+            store.commit_charge(charge["id"], payment_intent_id)
+            log.info("stripe webhook: charge committed", extra={
+                "charge_id": charge["id"], "amount": charge["amount"]
+            })
+
+            # Create a notification that the charge is now complete
+            store.create_notification(
+                charge["user_id"], "charge_completed",
+                "Charge completed",
+                f"Your ${charge['amount']} charge has been confirmed.",
+                {"charge_id": charge["id"], "amount": charge["amount"]}
+            )
+
+            return {"status": "ok", "message": "Charge committed"}
+        except Exception as e:
+            log.error("stripe webhook charge commit failed", extra={
+                "payment_intent_id": payment_intent_id, "error": str(e)
+            })
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            return {"status": "error", "message": "Charge commit failed"}
+
+    # Ignore other event types (e.g., payment_intent.payment_failed for failed auth)
+    return {"status": "ok", "message": "Event processed"}
+
+
 # ── reads ─────────────────────────────────────────────────────────────────────
 @app.get("/v1/commitments")
 async def list_commitments(user: dict[str, Any] = Depends(current_user)) -> list[dict[str, Any]]:
@@ -592,13 +690,28 @@ async def _slip_or_miss(user: dict[str, Any], cid: str, body: LapseBody, outcome
             try:
                 charge = await billing.charge_for_user(
                     user, charged, _note(cm, outcome), idempotency_key=idempotency_key)
-                store.commit_charge(charge_id, charge.provider_charge_id)
-                store.create_notification(
-                    user_id, "commitment_charged",
-                    f"Commitment charged: {cm['name']}",
-                    f"You were charged ${charged} for a {outcome}.",
-                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "kind": outcome}
-                )
+
+                if charge.status == "requires_action":
+                    # SCA/3D Secure: customer must authenticate. Store payment_intent_id
+                    # and keep charge pending until webhook confirms.
+                    store.set_charge_provider_id(charge_id, charge.provider_charge_id)
+                    store.create_notification(
+                        user_id, "charge_awaiting_authentication",
+                        f"Commitment charge pending authentication",
+                        f"A charge of ${charged} requires your card authentication. "
+                        "Check your payment method in Settings.",
+                        {"commitment_id": cid, "charge_id": charge_id, "amount": charged,
+                         "kind": outcome, "payment_intent_id": charge.provider_charge_id}
+                    )
+                else:
+                    # Charge succeeded immediately.
+                    store.commit_charge(charge_id, charge.provider_charge_id)
+                    store.create_notification(
+                        user_id, "commitment_charged",
+                        f"Commitment charged: {cm['name']}",
+                        f"You were charged ${charged} for a {outcome}.",
+                        {"commitment_id": cid, "charge_id": charge_id, "amount": charged, "kind": outcome}
+                    )
             except billing.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
                 store.create_notification(
@@ -661,13 +774,25 @@ async def auto_miss(cid: str, user: dict[str, Any] = Depends(current_user)) -> d
             try:
                 charge = await billing.charge_for_user(
                     user, charged, _note(cm, "auto-missed"), idempotency_key=idempotency_key)
-                store.commit_charge(charge_id, charge.provider_charge_id)
-                store.create_notification(
-                    user["id"], "auto_missed",
-                    f"Commitment auto-charged: {cm['name']}",
-                    f"You were charged ${charged} because your commitment was auto-missed.",
-                    {"commitment_id": cid, "charge_id": charge_id, "amount": charged}
-                )
+
+                if charge.status == "requires_action":
+                    store.set_charge_provider_id(charge_id, charge.provider_charge_id)
+                    store.create_notification(
+                        user["id"], "charge_awaiting_authentication",
+                        f"Auto-miss charge pending authentication",
+                        f"A charge of ${charged} requires your card authentication. "
+                        "Check your payment method in Settings.",
+                        {"commitment_id": cid, "charge_id": charge_id, "amount": charged,
+                         "kind": "auto-missed", "payment_intent_id": charge.provider_charge_id}
+                    )
+                else:
+                    store.commit_charge(charge_id, charge.provider_charge_id)
+                    store.create_notification(
+                        user["id"], "auto_missed",
+                        f"Commitment auto-charged: {cm['name']}",
+                        f"You were charged ${charged} because your commitment was auto-missed.",
+                        {"commitment_id": cid, "charge_id": charge_id, "amount": charged}
+                    )
             except billing.ChargeError as e:
                 store.fail_charge(charge_id, str(e))
                 store.create_notification(
@@ -827,13 +952,25 @@ async def tick() -> dict[str, Any]:
                     try:
                         charge = await billing.charge_for_user(
                             u, amount, _note(cm, "auto-missed (tick)"), idempotency_key=idempotency_key)
-                        store.commit_charge(charge_id, charge.provider_charge_id)
-                        store.create_notification(
-                            uid, "auto_missed",
-                            f"Commitment auto-charged: {cm['name']}",
-                            f"You were charged ${amount} because your commitment was auto-missed.",
-                            {"commitment_id": cid, "charge_id": charge_id, "amount": amount}
-                        )
+
+                        if charge.status == "requires_action":
+                            store.set_charge_provider_id(charge_id, charge.provider_charge_id)
+                            store.create_notification(
+                                uid, "charge_awaiting_authentication",
+                                f"Auto-miss charge pending authentication",
+                                f"A charge of ${amount} requires your card authentication. "
+                                "Check your payment method in Settings.",
+                                {"commitment_id": cid, "charge_id": charge_id, "amount": amount,
+                                 "kind": "auto-missed", "payment_intent_id": charge.provider_charge_id}
+                            )
+                        else:
+                            store.commit_charge(charge_id, charge.provider_charge_id)
+                            store.create_notification(
+                                uid, "auto_missed",
+                                f"Commitment auto-charged: {cm['name']}",
+                                f"You were charged ${amount} because your commitment was auto-missed.",
+                                {"commitment_id": cid, "charge_id": charge_id, "amount": amount}
+                            )
                     except billing.ChargeError as e:
                         store.fail_charge(charge_id, str(e))
                         store.create_notification(
@@ -883,13 +1020,27 @@ async def tick() -> dict[str, Any]:
                 try:
                     charge = await billing.charge_for_user(
                         u, amount, _penalty_note(count, day), idempotency_key=idempotency_key)
-                    store.commit_charge(charge_id, charge.provider_charge_id)
-                    store.create_notification(
-                        uid, "penalty",
-                        f"Penalty charge: {day}",
-                        f"You were charged ${amount} penalty for breaking your goal on {day}.",
-                        {"charge_id": charge_id, "amount": amount, "day": day, "count": count}
-                    )
+
+                    if charge.status == "requires_action":
+                        store.set_charge_provider_id(charge_id, charge.provider_charge_id)
+                        store.create_notification(
+                            uid, "charge_awaiting_authentication",
+                            f"Penalty charge pending authentication",
+                            f"A ${amount} penalty charge requires your card authentication. "
+                            "Check your payment method in Settings.",
+                            {"charge_id": charge_id, "amount": amount, "day": day, "count": count,
+                             "payment_intent_id": charge.provider_charge_id}
+                        )
+                    else:
+                        store.commit_charge(charge_id, charge.provider_charge_id)
+                        store.create_notification(
+                            uid, "penalty",
+                            f"Penalty charge: {day}",
+                            f"You were charged ${amount} penalty for breaking your goal on {day}.",
+                            {"charge_id": charge_id, "amount": amount, "day": day, "count": count}
+                        )
+                        store.mark_penalty_charged(uid, day, count)
+                        store.add_total_charged(uid, amount)
                 except billing.ChargeError as e:
                     store.fail_charge(charge_id, str(e))
                     store.create_notification(
@@ -900,8 +1051,7 @@ async def tick() -> dict[str, Any]:
                     )
                     penalty_errors.append({"day": day, "user_id": uid, "error": str(e)})
                     continue
-                store.mark_penalty_charged(uid, day, count)
-                store.add_total_charged(uid, amount)
+
                 penalties_charged.append({
                     "day": day, "user_id": uid, "amount": amount, "charge": charge.as_dict(),
                 })

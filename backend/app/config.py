@@ -72,6 +72,7 @@ class Settings:
     # working but gated to the app owner only; see billing.py.
     stripe_secret_key: str = os.environ.get("STRIPE_SECRET_KEY", "")
     stripe_publishable_key: str = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+    stripe_webhook_secret: str = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
     # ── money safety rails ───────────────────────────────────────────────
     min_stake: float = float(os.environ.get("MIN_STAKE", "1.00"))   # Beeminder floor

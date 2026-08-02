@@ -34,12 +34,13 @@ class ChargeError(Exception):
 
 class ChargeResult:
     def __init__(self, charged: bool, amount: float, note: str,
-                 provider: str, provider_charge_id: str | None):
+                 provider: str, provider_charge_id: str | None, status: str = "succeeded"):
         self.charged = charged
         self.amount = amount
         self.note = note
         self.provider = provider
         self.provider_charge_id = provider_charge_id
+        self.status = status  # 'succeeded' | 'requires_action'
 
     def as_dict(self) -> dict:
         return {
@@ -96,7 +97,7 @@ async def charge_for_user(user: dict[str, Any], amount: float, note: str,
             raise ChargeError(str(e)) from e
         return ChargeResult(charged=result.charged, amount=result.amount,
                             note=result.note, provider="beeminder",
-                            provider_charge_id=result.beeminder_id)
+                            provider_charge_id=result.beeminder_id, status="succeeded")
 
     settings_row = store.get_settings(user["id"])
     payment_method_id = settings_row.get("stripePaymentMethodId")
@@ -110,4 +111,4 @@ async def charge_for_user(user: dict[str, Any], amount: float, note: str,
         raise ChargeError(str(e)) from e
     return ChargeResult(charged=result.charged, amount=result.amount,
                         note=result.note, provider="samvara",
-                        provider_charge_id=result.provider_charge_id)
+                        provider_charge_id=result.provider_charge_id, status=result.status)

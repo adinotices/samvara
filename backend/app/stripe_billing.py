@@ -8,6 +8,11 @@ the user's card is billed directly and Samvara keeps the funds as the
 accountability penalty. This is the only provider ordinary users can select
 (see billing.py for the dispatch + the Beeminder-is-owner-only gate).
 
+Handles SCA/3-D Secure: when a charge requires customer authentication
+(requires_action status), returns a pending ChargeResult with the
+payment_intent_id. The webhook listener (security.py) watches for
+payment_intent.succeeded events and commits the charge once authenticated.
+
 STRIPE_SECRET_KEY decides live vs. test mode by which key you set (sk_live_...
 vs sk_test_...) — that's Stripe's own equivalent of BEEMINDER_DRYRUN; there is
 no separate dryrun flag here because a PaymentIntent created against a test
@@ -32,11 +37,12 @@ class ChargeError(Exception):
 
 class ChargeResult:
     def __init__(self, charged: bool, amount: float, note: str,
-                 provider_charge_id: str | None):
+                 provider_charge_id: str | None, status: str = "succeeded"):
         self.charged = charged
         self.amount = amount
         self.note = note
         self.provider_charge_id = provider_charge_id
+        self.status = status  # 'succeeded' | 'requires_action'
 
     def as_dict(self) -> dict:
         return {
@@ -44,6 +50,7 @@ class ChargeResult:
             "amount": self.amount,
             "note": self.note,
             "provider_charge_id": self.provider_charge_id,
+            "status": self.status,
         }
 
 
@@ -156,9 +163,12 @@ async def charge(customer_id: str, payment_method_id: str, amount: float,
                  note: str, idempotency_key: str | None = None) -> ChargeResult:
     """Charge `amount` USD to the customer's saved card, off-session (no user
     present to authenticate — this fires from a background sweep or a slip/
-    miss report, same as beeminder.charge). Raises ChargeError on
-    validation/API failure, including a decline, so the caller can surface it
-    without mutating state."""
+    miss report, same as beeminder.charge). Returns ChargeResult with status:
+      - 'succeeded': charge completed immediately (no auth needed)
+      - 'requires_action': customer auth required (3D Secure/SCA); charge is
+        pending webhook confirmation
+    Raises ChargeError on validation/API failure (decline, network, etc), so
+    the caller can surface it without mutating state."""
     _validate(amount)
     if not settings.stripe_secret_key:
         raise ChargeError("STRIPE_SECRET_KEY is not set; cannot charge.")
@@ -179,12 +189,24 @@ async def charge(customer_id: str, payment_method_id: str, amount: float,
     }, idempotency_key=idempotency_key)
 
     status_ = body.get("status")
-    if status_ != "succeeded":
+
+    if status_ == "succeeded":
+        log.info("stripe charge succeeded", extra={"amount": amount})
+        return ChargeResult(charged=True, amount=amount, note=note,
+                             provider_charge_id=body.get("id"), status="succeeded")
+
+    elif status_ == "requires_action":
+        # Customer auth required (3D Secure/SCA). Charge is pending webhook
+        # confirmation. Store payment_intent_id as provider_charge_id; webhook
+        # will update the record when customer authenticates.
+        log.info("stripe charge requires authentication", extra={
+            "amount": amount, "payment_intent_id": body.get("id"),
+        })
+        return ChargeResult(charged=False, amount=amount, note=note,
+                             provider_charge_id=body.get("id"), status="requires_action")
+
+    else:
         log.error("stripe payment_intent did not succeed", extra={
             "amount": amount, "status": status_,
         })
         raise ChargeError(f"Stripe charge did not succeed (status={status_}).")
-
-    log.info("stripe charge succeeded", extra={"amount": amount})
-    return ChargeResult(charged=True, amount=amount, note=note,
-                         provider_charge_id=body.get("id"))

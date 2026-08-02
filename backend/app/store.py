@@ -648,6 +648,17 @@ class Store:
             )
             conn.commit()
 
+    def set_charge_provider_id(self, charge_id: str, provider_charge_id: str) -> None:
+        """Update provider_charge_id without changing status (e.g. for requires_action
+        pending charges where webhook will later confirm)."""
+        with self.lock, self.engine.connect() as conn:
+            conn.execute(
+                update(db.charges).where(db.charges.c.id == charge_id).values(
+                    provider_charge_id=provider_charge_id
+                )
+            )
+            conn.commit()
+
     def fail_charge(self, charge_id: str, error_details: str | None = None) -> None:
         """Move charge from pending to failed."""
         with self.lock, self.engine.connect() as conn:
@@ -686,6 +697,24 @@ class Store:
             ).all()
         return [{"id": r[0], "commitment_id": r[1], "amount": r[2],
                  "kind": r[3], "idempotency_key": r[4], "created_at": r[5]} for r in rows]
+
+    def get_charge_by_provider_id(self, provider_charge_id: str,
+                                   provider: str = "samvara") -> dict[str, Any] | None:
+        """Look up a pending charge by payment_intent_id (used for webhook)."""
+        with self.lock, self.engine.connect() as conn:
+            row = conn.execute(
+                select(db.charges.c.id, db.charges.c.user_id, db.charges.c.amount,
+                       db.charges.c.status, db.charges.c.created_at)
+                .where(db.charges.c.provider_charge_id == provider_charge_id,
+                       db.charges.c.provider == provider,
+                       db.charges.c.status == "pending")
+            ).first()
+        if not row:
+            return None
+        return {
+            "id": row[0], "user_id": row[1], "amount": row[2],
+            "status": row[3], "created_at": row[4]
+        }
 
     def create_notification(self, user_id: str, notif_type: str, title: str, message: str,
                            data: dict[str, Any] | None = None) -> str:

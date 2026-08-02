@@ -224,7 +224,20 @@ async def delete_account(user: dict[str, Any] = Depends(current_user)) -> Respon
     here — 1C is where the account-deletion UX (confirmation, a recovery
     window, an in-app path per the store requirements) gets built; this is the
     underlying primitive it calls. Charge history is the one thing NOT erased
-    by this today — see the caveat on Store.delete_user."""
+    by this today — see the caveat on Store.delete_user.
+
+    Also deletes the Stripe customer record (GDPR erasure)."""
+    # Clean up Stripe customer before deleting user record
+    stripe_customer_id = user.get("stripe_customer_id")
+    if stripe_customer_id:
+        try:
+            await stripe_billing.delete_customer(stripe_customer_id)
+        except Exception as e:
+            log.error("stripe customer deletion failed during account delete", extra={
+                "user_id": user["id"], "error": str(e)
+            })
+            # Don't fail account deletion if Stripe cleanup fails — log and continue
+
     store.delete_user(user["id"])
     store.log_audit(user["id"], "account_deleted")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -619,6 +632,27 @@ async def billing_save_payment_method(
         "stripePaymentMethodId": payment_method_id,
         "cardBrand": card_details.get("brand"),
         "cardLast4": card_details.get("last4"),
+    })
+
+
+@app.delete("/v1/billing/payment-method")
+async def billing_remove_payment_method(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Remove the saved payment method (detach from Stripe customer)."""
+    settings_row = store.get_settings(user["id"])
+    payment_method_id = settings_row.get("stripePaymentMethodId")
+
+    if payment_method_id:
+        try:
+            await stripe_billing.delete_payment_method(payment_method_id)
+        except Exception as e:
+            log.error("payment method removal failed", extra={"error": str(e)})
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not remove payment method") from e
+
+    # Clear card details from settings
+    return store.update_settings(user["id"], {
+        "stripePaymentMethodId": None,
+        "cardBrand": None,
+        "cardLast4": None,
     })
 
 

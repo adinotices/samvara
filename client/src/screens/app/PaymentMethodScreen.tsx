@@ -82,6 +82,33 @@ export default function PaymentMethodScreen() {
     }
   };
 
+  const removeCard = async () => {
+    Alert.alert(
+      'Remove card?',
+      'Your saved payment method will be deleted. You can add a new card anytime.',
+      [
+        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        {
+          text: 'Remove',
+          onPress: async () => {
+            setSaving(true);
+            setError(null);
+            try {
+              await apiClient.removePaymentMethod();
+              await load();
+              Alert.alert('Card removed', 'Your payment method has been deleted.');
+            } catch (e: any) {
+              setError(e?.message || e?.detail || 'Could not remove your card.');
+            } finally {
+              setSaving(false);
+            }
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -121,6 +148,16 @@ export default function PaymentMethodScreen() {
           </Text>
         )}
       </TouchableOpacity>
+
+      {status?.hasPaymentMethod && (
+        <TouchableOpacity
+          style={[styles.button, styles.buttonDanger]}
+          onPress={removeCard}
+          disabled={saving}
+        >
+          <Text style={styles.buttonText}>Remove Card</Text>
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.hint}>
         Slip and miss charges are billed directly to this card. Saṃvara
@@ -166,6 +203,9 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
+  },
+  buttonDanger: {
+    backgroundColor: '#a3573a',
   },
   buttonText: {
     color: '#fff',

@@ -170,6 +170,10 @@ class ApiClient {
     return this.client.post('/v1/billing/payment-method', { setupIntentId });
   }
 
+  async removePaymentMethod() {
+    return this.client.delete('/v1/billing/payment-method');
+  }
+
   // Health check
   async health() {
     return this.client.get('/v1/health');

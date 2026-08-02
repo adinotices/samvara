@@ -172,6 +172,46 @@ async def get_payment_method_details(payment_method_id: str) -> dict[str, str | 
     }
 
 
+async def delete_payment_method(payment_method_id: str) -> None:
+    """Detach a payment method from its customer (remove card from file)."""
+    if not payment_method_id or not settings.stripe_secret_key:
+        return  # No-op if not set up
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                API_BASE + f"payment_methods/{payment_method_id}/detach",
+                auth=_auth(),
+            )
+        if resp.status_code >= 400:
+            log.error("stripe payment method detach failed", extra={
+                "payment_method_id": payment_method_id, "status": resp.status_code,
+            })
+    except httpx.HTTPError as e:
+        log.error("stripe payment method detach request failed", extra={
+            "payment_method_id": payment_method_id, "error": str(e)
+        })
+
+
+async def delete_customer(customer_id: str) -> None:
+    """Delete a Stripe customer record (GDPR erasure path)."""
+    if not customer_id or not settings.stripe_secret_key:
+        return  # No-op if not set up
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.delete(
+                API_BASE + f"customers/{customer_id}",
+                auth=_auth(),
+            )
+        if resp.status_code >= 400:
+            log.error("stripe customer delete failed", extra={
+                "customer_id": customer_id, "status": resp.status_code,
+            })
+    except httpx.HTTPError as e:
+        log.error("stripe customer delete request failed", extra={
+            "customer_id": customer_id, "error": str(e)
+        })
+
+
 async def charge(customer_id: str, payment_method_id: str, amount: float,
                  note: str, idempotency_key: str | None = None) -> ChargeResult:
     """Charge `amount` USD to the customer's saved card, off-session (no user

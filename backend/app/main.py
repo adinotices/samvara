@@ -674,6 +674,24 @@ async def billing_remove_payment_method(user: dict[str, Any] = Depends(current_u
     })
 
 
+class RefundRequest(BaseModel):
+    amount: float | None = None
+
+
+@app.delete("/v1/billing/charges/{charge_id}/refund")
+async def refund_charge_endpoint(
+    charge_id: str, body: RefundRequest,
+    user: dict[str, Any] = Depends(current_user)
+) -> dict[str, str]:
+    """Refund a charge (full or partial). Returns refund_id."""
+    try:
+        refund_id = await stripe_billing.refund_charge(charge_id, body.amount)
+        return {"refundId": refund_id}
+    except stripe_billing.ChargeError as e:
+        log.error("refund failed", extra={"charge_id": charge_id, "error": str(e)})
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+
+
 # ── writes that charge ───────────────────────────────────────────────────────
 # Two layers, deliberately not one:
 #   * _charge_lock (asyncio.Lock) serializes every charge sequence WITHIN this

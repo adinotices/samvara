@@ -65,6 +65,12 @@ class FakeAsyncClient:
         CALLS.append({"url": url, "data": {}, "headers": {}})
         return FakeAsyncClient.response
 
+    async def delete(self, url, auth=None):
+        if FakeAsyncClient.raise_network:
+            raise httpx.ConnectError("boom")
+        CALLS.append({"url": url, "data": {}, "headers": {}})
+        return FakeAsyncClient.response
+
 
 @pytest.fixture(autouse=True)
 def _wire(monkeypatch):
@@ -196,3 +202,45 @@ def test_get_setup_intent_payment_method_raises_if_unattached():
     FakeAsyncClient.response = FakeResponse(200, {"id": "seti_1", "payment_method": None})
     with pytest.raises(stripe_billing.ChargeError, match="no attached payment method"):
         asyncio.run(stripe_billing.get_setup_intent_payment_method("seti_1"))
+
+
+# ── refunds ──────────────────────────────────────────────────────────────────
+def test_refund_full_charge():
+    FakeAsyncClient.response = FakeResponse(200, {"id": "ref_123"})
+    refund_id = asyncio.run(stripe_billing.refund_charge("pi_456"))
+    assert refund_id == "ref_123"
+    assert CALLS[-1]["url"].endswith("refunds")
+    assert CALLS[-1]["data"]["payment_intent"] == "pi_456"
+    assert "amount" not in CALLS[-1]["data"]
+
+
+def test_refund_partial_amount():
+    FakeAsyncClient.response = FakeResponse(200, {"id": "ref_789"})
+    refund_id = asyncio.run(stripe_billing.refund_charge("pi_456", 5.50))
+    assert refund_id == "ref_789"
+    assert CALLS[-1]["data"]["amount"] == "550"  # in cents
+
+
+def test_refund_missing_charge_id_raises():
+    with pytest.raises(stripe_billing.ChargeError, match="No charge_id"):
+        asyncio.run(stripe_billing.refund_charge(""))
+    assert CALLS == []
+
+
+def test_refund_missing_secret_key_raises(monkeypatch):
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    with pytest.raises(stripe_billing.ChargeError, match="STRIPE_SECRET_KEY"):
+        asyncio.run(stripe_billing.refund_charge("pi_456"))
+    assert CALLS == []
+
+
+def test_refund_network_error_raises():
+    FakeAsyncClient.raise_network = True
+    with pytest.raises(stripe_billing.ChargeError, match="request failed"):
+        asyncio.run(stripe_billing.refund_charge("pi_456"))
+
+
+def test_refund_stripe_error_raises():
+    FakeAsyncClient.response = FakeResponse(400, {"error": {"message": "Invalid charge"}})
+    with pytest.raises(stripe_billing.ChargeError, match="Invalid charge"):
+        asyncio.run(stripe_billing.refund_charge("pi_456"))

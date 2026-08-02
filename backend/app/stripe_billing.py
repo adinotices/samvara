@@ -192,6 +192,33 @@ async def delete_payment_method(payment_method_id: str) -> None:
         })
 
 
+async def refund_charge(charge_id: str, amount: float | None = None) -> str:
+    """Issue a refund against a charge. If amount is None, refunds the full amount.
+    Returns the refund_id. Raises ChargeError on failure."""
+    if not settings.stripe_secret_key:
+        raise ChargeError("STRIPE_SECRET_KEY is not set; cannot issue refund.")
+    if not charge_id:
+        raise ChargeError("No charge_id provided for refund.")
+
+    data = {"payment_intent": charge_id}
+    if amount is not None:
+        data["amount"] = str(int(round(amount * 100)))  # convert to cents
+
+    try:
+        body = await _post("refunds", data)
+    except ChargeError as e:
+        log.error("stripe refund failed", extra={
+            "charge_id": charge_id, "amount": amount, "error": str(e)
+        })
+        raise
+
+    refund_id = body.get("id")
+    log.info("stripe refund issued", extra={
+        "refund_id": refund_id, "charge_id": charge_id, "amount": amount
+    })
+    return refund_id
+
+
 async def delete_customer(customer_id: str) -> None:
     """Delete a Stripe customer record (GDPR erasure path)."""
     if not customer_id or not settings.stripe_secret_key:

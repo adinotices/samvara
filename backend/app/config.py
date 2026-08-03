@@ -95,9 +95,9 @@ class Settings:
     #             owner-only) can complete sign-in; a first-time verify for
     #             any other address is rejected before a session is issued.
     # "open"   -> any address that completes the OTP flow gets an account.
-    # Defaults to invite: money is live in this app, so opening signup to the
-    # public is a deliberate switch to flip, not this port's default.
-    signup_mode: str = os.environ.get("SIGNUP_MODE", "invite")
+    # Defaults to open: the app is public-facing. Set SIGNUP_MODE=invite to
+    # gate signup behind the invites table again.
+    signup_mode: str = os.environ.get("SIGNUP_MODE", "open")
 
     # ── daily metrics (the Data tab) ─────────────────────────────────────
     # Default timezone for a NEW user's account (set once, at signup — see

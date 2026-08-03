@@ -29,9 +29,10 @@ primary_region = "iad"
 
 [env]
   AUTH_MODE = "token"
-  # "invite" until you've deliberately decided to open signup — this app
-  # charges real money. See SIGNUP_MODE in .env.example.
-  SIGNUP_MODE = "invite"
+  # Public signup — anyone completing the OTP flow gets an account. This app
+  # charges real money, so this is a deliberate choice; see SIGNUP_MODE in
+  # .env.example if you ever need to gate it behind invites again.
+  SIGNUP_MODE = "open"
   # Both origins the frontend may be served from: the custom domain and the
   # bare GitHub Pages origin (used until samvara.app DNS is configured).
   ALLOWED_ORIGINS = "https://samvara.app,https://adinotices.github.io"

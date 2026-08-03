@@ -36,7 +36,7 @@ primary_region = "iad"
 [env]
   AUTH_MODE = "token"
   SIGNUP_MODE = "invite"
-  ALLOWED_ORIGINS = "https://stg.samvara.app,http://localhost:19006"
+  ALLOWED_ORIGINS = "https://stg.samvara.app,https://samvara-web-staging.fly.dev,http://localhost:19006"
   BEEMINDER_DRYRUN = "true"
   MIN_STAKE = "1.00"
   MAX_CHARGE_USD = "50.00"

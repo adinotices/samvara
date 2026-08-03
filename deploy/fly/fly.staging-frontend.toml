@@ -1,8 +1,10 @@
 # Fly.io staging frontend deployment — samvara-web-staging
 # Mirrors deploy/fly/fly.staging.toml (backend) but for the React admin/dashboard web UI
 #
-# Deploy from the repo root:
-#   flyctl deploy ./frontend -c deploy/fly/fly.staging-frontend.toml -a samvara-web-staging
+# Build context must be the repo root (Dockerfile needs both scripts/ and
+# frontend/ to run the real build-frontend.sh pipeline). Deploy from the repo
+# root:
+#   flyctl deploy . -c deploy/fly/fly.staging-frontend.toml -a samvara-web-staging --dockerfile frontend/Dockerfile
 #
 # One-time setup already done for this app:
 #   fly apps create samvara-web-staging --org personal
@@ -14,7 +16,7 @@ app = "samvara-web-staging"
 primary_region = "iad"
 
 [build]
-  dockerfile = "../../frontend/Dockerfile"
+  dockerfile = "frontend/Dockerfile"
 
 [http_service]
   internal_port = 8080

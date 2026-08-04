@@ -47,8 +47,13 @@ primary_region = "iad"
   internal_port = 8000
   force_https = true
   auto_stop_machines = "off"
-  auto_start_machines = true
-  min_machines_running = 1
+  # Deliberately false: this is a staging app, meant to sit fully off between
+  # testing sessions. auto_start_machines=true would let any stray request
+  # (a health probe, a crawler) silently spin machines back up and rack up
+  # cost without anyone noticing. Start it explicitly when you need it:
+  #   flyctl machines start -a samvara-api-staging
+  auto_start_machines = false
+  min_machines_running = 0
 
 [[http_service.checks]]
   # Checks DB reachability too, unlike /v1/health — matters here since this

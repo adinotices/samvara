@@ -31,7 +31,7 @@ concurrency:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: POST /v1/tick
         env:
@@ -39,18 +39,32 @@ jobs:
           TOKEN: ${{ secrets.SAMVARA_API_TOKEN }}
         run: |
           set -uo pipefail
+          # NOTE: Actions runs this with `bash -e`, so errexit is on no matter
+          # what `set` says here. Every curl below therefore uses the
+          # `|| curl_exit=$?` form: a bare `code=$(curl ...)` would abort the
+          # step on the first transport failure and skip the retry logic
+          # entirely — which is exactly the case this is here to handle.
+
           # Normalize: strip trailing slash and an optional trailing /v1.
           BASE="${BASE%/}"; BASE="${BASE%/v1}"
 
+          # Long enough not to truncate a real sweep: /v1/tick charges
+          # sequentially, one Beeminder call per past-grace commitment and per
+          # unbilled penalty day, each capped at 15s server-side. A tight cap
+          # here would cut off a sweep that was working fine.
+          MAX_TIME=120
+
           attempt=1
           max_attempts=3
-          until [ "$attempt" -gt "$max_attempts" ]; do
+
+          while :; do
+            curl_exit=0
             code=$(curl -sS -o /tmp/tick.out -w "%{http_code}" \
-              --connect-timeout 10 --max-time 20 \
+              --connect-timeout 10 --max-time "$MAX_TIME" \
               -X POST "$BASE/v1/tick" \
               -H "Authorization: Bearer $TOKEN" \
-              -H "Content-Type: application/json")
-            curl_exit=$?
+              -H "Content-Type: application/json") || curl_exit=$?
+
             if [ "$curl_exit" -eq 0 ] && [ "${code:0:1}" = "2" ]; then
               echo "HTTP $code (attempt $attempt)"
               # Deliberately NOT printing the response body: on a public repo
@@ -61,10 +75,46 @@ jobs:
               echo "tick ok"
               exit 0
             fi
-            echo "attempt $attempt failed (curl_exit=$curl_exit, http=${code:-none})"
-            attempt=$((attempt + 1))
-            [ "$attempt" -le "$max_attempts" ] && sleep 5
-          done
 
-          echo "tick failed after $max_attempts attempts"
-          exit 1
+            # Only retry failures where the server provably did no work. This
+            # endpoint moves real money, so "no response" is not the same as
+            # "nothing happened".
+            case "$curl_exit" in
+              6|7)
+                # DNS / connection refused: the request never landed. This is
+                # the observed failure mode — the app logged no POST at all.
+                reason="could not reach the server (curl $curl_exit)"
+                ;;
+              28)
+                # Timed out waiting for a response. The sweep may still be
+                # running server-side, holding its in-process charge lock. A
+                # retry would queue behind it, and the disconnect can cancel an
+                # in-flight Beeminder charge. Bail out instead: the sweep is
+                # idempotent and grace is 24h, so the next tick covers it.
+                echo "tick timed out after ${MAX_TIME}s; the sweep may still be" \
+                     "running server-side. Not retrying — next tick will cover it."
+                exit 1
+                ;;
+              0)
+                case "$code" in
+                  # 5xx: server did not complete the request. Safe to retry —
+                  # already-charged items are skipped server-side.
+                  5*) reason="server error (HTTP $code)" ;;
+                  # 4xx is a bad token or bad base URL; retrying never helps.
+                  *)  echo "tick failed (HTTP $code) — not retryable"; exit 1 ;;
+                esac
+                ;;
+              *)
+                echo "tick failed (curl exit $curl_exit) — not retryable"
+                exit 1
+                ;;
+            esac
+
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "tick failed after $attempt attempts: $reason"
+              exit 1
+            fi
+            echo "attempt $attempt failed: $reason; retrying in 5s"
+            attempt=$((attempt + 1))
+            sleep 5
+          done

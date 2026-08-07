@@ -76,7 +76,8 @@ class Settings:
 
     # ── ratchet timing ───────────────────────────────────────────────────
     # Grace window after a deadline before an unanswered rung auto-charges.
-    # Keep in sync with GRACE_MS in frontend/api-client.js (24h there).
+    # Authoritative: /v1/health publishes this to the frontend, which adopts it
+    # at boot rather than carrying its own copy.
     grace_hours: float = float(os.environ.get("GRACE_HOURS", "24"))
 
     @property

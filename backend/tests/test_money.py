@@ -260,6 +260,42 @@ def test_stake_over_cap_gets_402_and_explicit_recommit_recovers():
     assert snapshot(cm["id"])["current_rung"]["stake"] == 10.0
 
 
+def test_auto_escalation_stops_at_the_cap(monkeypatch):
+    """The +$1-per-lapse climb must never carry the rung over MAX_CHARGE_USD.
+
+    Without the clamp the ratchet walks itself into a rung it can never charge:
+    every later /slip is a 402 and every scheduled sweep retries it forever.
+    That is self-inflicted, unlike a stake the user typed on purpose.
+    """
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    cm = mk(stake=50.0)  # already sitting exactly on the $50 cap
+
+    r = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
+    assert r.status_code == 200
+    # Charged the old stake, but the NEXT rung is held at the cap, not $51.
+    assert r.json()["charged"] == 50.0
+    assert r.json()["recommit"]["stake"] == 50.0
+    assert snapshot(cm["id"])["current_rung"]["stake"] == 50.0
+
+    # And the new rung is genuinely chargeable — the point of the clamp.
+    r2 = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
+    assert r2.status_code == 200 and r2.json()["charged"] == 50.0
+
+
+def test_explicit_over_cap_stake_is_still_honored_not_silently_lowered():
+    """The clamp applies to our own escalation only.
+
+    A number the user typed is left alone: it is refused at charge time with a
+    402 (see the cap test above), which is a clearer answer than quietly
+    rewriting the amount they asked for.
+    """
+    cm = mk(stake=5.0)
+    r = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR,
+                    json={"dryRun": True, "stake": 60.0})
+    assert r.status_code == 200
+    assert r.json()["recommit"]["stake"] == 60.0
+
+
 def test_non_finite_stake_never_reaches_state():
     r = client.post("/v1/commitments", headers=HDR,
                     json={"name": "Inf", "base_days": 1, "base_stake": "Infinity"})

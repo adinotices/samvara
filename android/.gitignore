@@ -1,6 +1,14 @@
+# Android shell build artifacts.
+#
+# Patterns in this file are relative to the directory it sits in (android/), so
+# they must NOT be prefixed with "android/" — that would resolve to
+# android/android/... and silently match nothing, which is exactly why ~98 build
+# files ended up tracked despite being listed here.
 
-# Android shell build artifacts
-android/local.properties
-android/.gradle/
-android/build/
-android/app/build/
+# Machine-specific: holds the local SDK path.
+local.properties
+
+# Gradle caches and build output.
+.gradle/
+build/
+app/build/

@@ -67,11 +67,34 @@ jobs:
 
             if [ "$curl_exit" -eq 0 ] && [ "${code:0:1}" = "2" ]; then
               echo "HTTP $code (attempt $attempt)"
-              # Deliberately NOT printing the response body: on a public repo
-              # these logs are world-readable and the body carries commitment
-              # names and amounts. Counts are all the log needs.
-              jq -r '"charged=\(.charged_count // 0) errors=\((.errors // []) | length)"' \
+              # Deliberately NOT printing the response body, nor the error
+              # strings: on a public repo these logs are world-readable and both
+              # carry commitment names and amounts. Counts and opaque ids are
+              # all this log needs — the server logs the reasons in full.
+              jq -r '"charged=\(.charged_count // 0)"
+                   + " errors=\((.errors // []) | length)"
+                   + " penalties=\(.penalties_charged_count // 0)"
+                   + " penalty_errors=\((.penalty_errors // []) | length)"' \
                 /tmp/tick.out 2>/dev/null || true
+
+              # A 200 does NOT mean money moved. The sweep reports per-item
+              # failures in `errors` / `penalty_errors` and still returns 200,
+              # so without this check a permanently failing charge (expired
+              # Beeminder token, a stake over MAX_CHARGE_USD, Beeminder
+              # rejecting) would retry every 15 minutes forever behind a green
+              # tick. This app's whole premise is that the charge lands, so a
+              # sweep that could not charge is a failed run.
+              failed=$(jq -r '((.errors // []) | length) + ((.penalty_errors // []) | length)' \
+                /tmp/tick.out 2>/dev/null || echo 0)
+              if [ "${failed:-0}" != "0" ]; then
+                echo "tick reported $failed failed charge(s):"
+                jq -r '[((.errors // [])[] | .id // "?"),
+                        ((.penalty_errors // [])[] | .day // "?")] | join(", ")' \
+                  /tmp/tick.out 2>/dev/null || true
+                echo "Reasons are in the server logs (kept out of this public log)."
+                exit 1
+              fi
+
               echo "tick ok"
               exit 0
             fi

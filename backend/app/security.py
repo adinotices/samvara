@@ -49,6 +49,13 @@ class VerifyCodeBody(BaseModel):
     code: str
 
 
+# NOTE: stake is deliberately NOT capped at MAX_CHARGE_USD here. The cap is a
+# charge-time rail, not a schema rule: it is runtime-configurable, so lowering
+# it must leave already-stored commitments tolerable rather than invalid. An
+# over-cap rung refuses to charge (402, state untouched) and is recovered with
+# an explicit choose-next — see test_stake_over_cap_gets_402_and_explicit_
+# recommit_recovers. What the ratchet must never do is walk itself over the cap
+# on its own; that clamp lives in ratchet.resolve_recommit.
 class CreateBody(BaseModel):
     name: str
     base_days: int = Field(ge=1)

@@ -18,9 +18,17 @@
 
 const HOUR = 60 * 60 * 1000;
 
-// Must match GRACE_HOURS on the server (24h). The UI uses these two directly and
-// synchronously to draw grace countdowns and decide when to call autoMiss.
-export const GRACE_MS = 24 * HOUR;
+// The server's GRACE_HOURS, mirrored here because the UI uses these two
+// directly and SYNCHRONOUSLY (inside setState) to draw grace countdowns and
+// decide when to call autoMiss — so they can't be async.
+//
+// 24h is the same default the server ships; init() overwrites it with the real
+// value from /health. It is `let`, not `const`, so that overwrite is visible
+// to importers: ES module bindings are live, and both call sites read
+// `api.GRACE_MS` at call time rather than capturing it. Previously this was a
+// hard-coded constant, so changing GRACE_HOURS server-side silently desynced
+// the countdown from the clock that actually charges.
+export let GRACE_MS = 24 * HOUR;
 export function graceEnd(rung) { return Date.parse(rung.due) + GRACE_MS; }
 
 // Pure escalation suggestion: one day longer. Kept identical to the server so
@@ -76,8 +84,17 @@ async function req(method, path, body) {
 }
 
 // ── init: best-effort reachability check (never throws on its own) ───────────
+// Doubles as the config sync: /health returns grace_hours to an authenticated
+// caller, which replaces the local default so the countdown always matches the
+// server that actually charges. Anonymous callers get no grace_hours and keep
+// the default; sign-in reloads the page, so init() re-runs with the token.
 export async function init() {
-  try { await req('GET', '/health'); } catch (e) { /* surfaced later by refresh */ }
+  try {
+    const h = await req('GET', '/health');
+    const hrs = h && h.grace_hours;
+    // Guard hard: a bad value here would silently move every deadline.
+    if (typeof hrs === 'number' && isFinite(hrs) && hrs > 0) GRACE_MS = hrs * HOUR;
+  } catch (e) { /* surfaced later by refresh */ }
 }
 
 // ── reads ────────────────────────────────────────────────────────────────────

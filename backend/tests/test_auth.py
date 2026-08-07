@@ -20,6 +20,7 @@ os.environ["AUTH_EMAIL"] = "owner@example.com"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import auth  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.store import store  # noqa: E402
 
@@ -117,6 +118,11 @@ def test_health_redacts_config_without_token():
     full = client.get("/v1/health",
                       headers={"Authorization": "Bearer static-cron-token"}).json()
     assert full["status"] == "ok" and "beeminder_dryrun" in full
+    # grace_hours is config too: it stays behind the token, but it must be
+    # there, because the frontend now takes its grace window from this instead
+    # of hard-coding 24h.
+    assert "grace_hours" not in anon
+    assert full["grace_hours"] == settings.grace_hours
 
 
 def test_sign_out_revokes_the_session_server_side():

@@ -79,14 +79,23 @@ def clamp_days(v: Any, default: int = 1) -> int:
     return max(1, round(f))
 
 
-def clamp_stake(v: Any, default: float = 1.0) -> float:
+def clamp_stake(v: Any, default: float = 1.0, maximum: float | None = None) -> float:
+    """Coerce to a usable stake: at least $1, at most `maximum` when given.
+
+    The upper clamp matters because a stake above the charge cap can never be
+    charged — the commitment would be stuck, chargeable by nothing and
+    resolvable only by picking a new rung by hand.
+    """
     try:
         f = float(v)
     except (TypeError, ValueError):
         return default
     if not math.isfinite(f):
         return default
-    return max(1.0, f)
+    f = max(1.0, f)
+    if maximum is not None:
+        f = min(f, maximum)
+    return f
 
 
 def new_commitment(name: str, base_days: Any, base_stake: Any) -> Commitment:
@@ -112,12 +121,28 @@ def grace_end_ms(rung: Rung, grace_ms: int) -> int:
 
 
 # ── recommit-target resolution (slip / miss) ─────────────────────────────────
-def resolve_recommit(cur: Rung, raise_: bool, days: Any, stake: Any) -> tuple[int, float]:
+def resolve_recommit(cur: Rung, raise_: bool, days: Any, stake: Any,
+                     max_stake: float | None = None) -> tuple[int, float]:
+    """The (days, stake) of the rung to recommit to after a slip/miss.
+
+    `max_stake` caps only the escalation this function computes itself. The
+    default is +$1 per lapse, so a long-lived commitment climbs steadily and
+    would eventually pass MAX_CHARGE_USD, after which every charge is refused
+    and the ratchet is stuck until a human re-rungs it by hand. Stopping our
+    own climb at the cap keeps it chargeable indefinitely.
+
+    An *explicit* stake is passed through uncapped on purpose: the cap is a
+    charge-time rail, deliberate over-cap values are answered with a 402 and
+    recovered via choose-next, and silently rewriting a number the user typed
+    would be worse than refusing it.
+    """
     new_days = clamp_days(days) if days is not None else cur["days"]
     if stake is not None:
         new_stake = clamp_stake(stake)
     else:
         new_stake = cur["stake"] + 1 if raise_ else cur["stake"]
+        if max_stake is not None:
+            new_stake = min(new_stake, max_stake)
     return new_days, new_stake
 
 

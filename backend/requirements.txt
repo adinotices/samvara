@@ -1,4 +1,44 @@
+# Fully pinned, including transitive dependencies.
+#
+# The direct deps are the four marked below; everything else is pulled in by
+# them. They are pinned too on purpose: this service moves real money, and an
+# unpinned transitive dep means `docker build` can resolve a different library
+# months later and change behaviour with no commit to point at. Pydantic in
+# particular already warns that the Field(alias="raise") form used by
+# LapseBody is deprecated — the field deciding whether a stake escalates — so
+# an unpinned upgrade could silently alter a charge.
+#
+# To regenerate after changing a direct dep (use python3.12, matching the
+# Dockerfile's base image):
+#
+#   python3.12 -m venv /tmp/lock && /tmp/lock/bin/pip install \
+#       "fastapi==X" "uvicorn[standard]==Y" "httpx==Z" "tzdata==W" && \
+#   /tmp/lock/bin/pip freeze | sort
+#
+# Then run the test suite against that venv before committing the result.
+
+# ── direct ───────────────────────────────────────────────────────────────────
 fastapi==0.115.6
-uvicorn[standard]==0.34.0
 httpx==0.28.1
 tzdata==2025.2
+uvicorn==0.34.0
+
+# ── transitive (uvicorn[standard] extras included) ───────────────────────────
+annotated-types==0.8.0
+anyio==4.14.2
+certifi==2026.7.22
+click==8.4.2
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+idna==3.18
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dotenv==1.2.2
+PyYAML==6.0.3
+starlette==0.41.3
+typing-inspection==0.4.2
+typing_extensions==4.16.0
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==17.0.1

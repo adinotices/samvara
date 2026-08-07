@@ -151,6 +151,11 @@ async def health(authorization: str | None = Header(default=None)) -> dict[str, 
             "beeminder_dryrun": settings.beeminder_dryrun,
             "beeminder_configured": bool(settings.beeminder_token),
             "max_charge_usd": settings.max_charge,
+            # The client draws grace countdowns and decides when to call
+            # /auto-miss from this. Publishing it keeps GRACE_HOURS a
+            # server-only setting: before this the frontend hard-coded 24h, so
+            # changing it here silently desynced the two.
+            "grace_hours": settings.grace_hours,
         })
     return out
 
@@ -234,7 +239,8 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
     cm = _require(cid)
     cur = cm["current_rung"]
     charged = cur["stake"]
-    new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
+    new_days, new_stake = ratchet.resolve_recommit(
+        cur, body.raise_, body.days, body.stake, max_stake=settings.max_charge)
     result: dict[str, Any] = {
         "charged": charged,
         "recommit": {"days": new_days, "stake": new_stake},
@@ -261,7 +267,8 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
                 status.HTTP_409_CONFLICT,
                 "Duplicate lapse report: a charge for this commitment just landed.")
         charged = cur["stake"]
-        new_days, new_stake = ratchet.resolve_recommit(cur, body.raise_, body.days, body.stake)
+        new_days, new_stake = ratchet.resolve_recommit(
+        cur, body.raise_, body.days, body.stake, max_stake=settings.max_charge)
         result["charged"] = charged
         result["recommit"] = {"days": new_days, "stake": new_stake}
 
@@ -441,6 +448,10 @@ async def tick() -> dict[str, Any]:
             try:
                 charge = await beeminder.charge(amount, _note(cm, "auto-missed (tick)"))
             except beeminder.ChargeError as e:
+                # Logged in full here because the caller (the cron workflow)
+                # runs in a public log and only prints counts + opaque ids.
+                # This is the record that says why the money did not move.
+                log.warning("tick: charge failed for commitment %s: %s", cid, e)
                 errors.append({"id": cid, "error": str(e)})
                 continue
             with store.lock:
@@ -472,6 +483,7 @@ async def tick() -> dict[str, Any]:
             try:
                 charge = await beeminder.charge(amount, _penalty_note(count, day))
             except beeminder.ChargeError as e:
+                log.warning("tick: penalty charge failed for day %s: %s", day, e)
                 penalty_errors.append({"day": day, "error": str(e)})
                 continue
             with store.lock:

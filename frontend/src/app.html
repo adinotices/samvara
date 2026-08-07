@@ -558,6 +558,16 @@
       </sc-if>
     </sc-if>
 
+    <!-- A server-touching action failed (see act()). Shown on every view,
+         because the charge actions live on several of them and a silently
+         swallowed 402/409 is exactly what this is here to prevent. -->
+    <sc-if value="{{ hasActionError }}">
+      <div style="background:color-mix(in srgb,var(--missed,#a3573a) 12%,transparent);border:1px solid var(--missed,#a3573a);border-radius:12px;padding:12px 14px;margin-bottom:14px;color:var(--missed,#a3573a);font-size:13.5px;line-height:1.55;display:flex;gap:12px;align-items:flex-start">
+        <span style="flex:1">{{ actionError }}</span>
+        <button onclick="{{ dismissActionError }}" aria-label="Dismiss" style="flex:none;min-height:28px;padding:0 10px;border-radius:8px;background:transparent;border:1px solid var(--missed,#a3573a);color:var(--missed,#a3573a);font-size:12.5px;font-weight:600;cursor:pointer">Dismiss</button>
+      </div>
+    </sc-if>
+
     <!-- ── DASHBOARD ─────────────────────────────────────── -->
     <sc-if value="{{ isDashboard }}">
      <sc-if value="{{ loaded }}">
@@ -1075,6 +1085,8 @@ class Component extends DCLogic {
     sApiBase: '', sRecipient: '',
     // data tab (daily metric tallies)
     dataTab: 'track', metrics: null, metricsError: '',
+    // last failed server-touching action (see act()); '' when there is none
+    actionError: '',
   };
 
   async componentDidMount() {
@@ -1135,6 +1147,36 @@ class Component extends DCLogic {
     const commitments = await this.api.listCommitments();
     const settings = await this.api.getSettings();
     this.setState({ commitments, settings });
+  }
+
+  // Wrap every server-touching button handler.
+  //
+  // These are onclick handlers, so a rejected fetch inside one is an unhandled
+  // promise rejection: nothing renders, nothing changes, and the tap simply
+  // appears to do nothing. On the charge path that is indistinguishable from
+  // success — a refused charge (402, e.g. over the cap) or a rejected
+  // duplicate (409, "a charge for this commitment just landed") would vanish
+  // silently, which is the worst way for a money action to fail. The server
+  // writes those messages to be read, so surface them verbatim.
+  act(fn) {
+    return async (...args) => {
+      this.setState({ actionError: '' });
+      try {
+        await fn(...args);
+      } catch (e) {
+        const raw = String((e && e.message) || e);
+        if (raw.indexOf(' 401') !== -1) {
+          // Dead session: same landing as a failed boot, not an inline error.
+          try { localStorage.removeItem('samvara.authed'); localStorage.removeItem('samvara.apiToken'); } catch (e2) {}
+          return this.setState({ authed: false, authView: 'email', actionError: '' });
+        }
+        // req() throws 'Samvara API POST /path → 409: <server detail>'; the
+        // detail is the half worth showing.
+        const arrow = raw.indexOf('→ ');
+        const sep = arrow === -1 ? -1 : raw.indexOf(': ', arrow);
+        this.setState({ actionError: sep === -1 ? raw : raw.slice(sep + 2) });
+      }
+    };
   }
 
   // ── theme: sunset/sunrise, not prefers-color-scheme ───────
@@ -1311,34 +1353,34 @@ class Component extends DCLogic {
       onMiss: () => this.setState({ view: 'lapse', selectedId: cm.id, lapseDry: null, lapseKind: 'miss', lapseDays: String(cm.current_rung.days), lapseStake: String(cm.current_rung.stake + 1) }),
       onDecision: openDecision,
       onRecommit: openRecommit,
-      onRecommitQuick: async () => {
+      onRecommitQuick: this.act(async () => {
         const rr = cm.current_rung;
         await this.api.chooseNextRung(cm.id, { days: rr.days, stake: (rr.charged_amount || rr.stake) + 1 });
         await this.refresh();
         this.setState({ view: 'dashboard' });
-      },
-      onConfirmClean: async () => {
+      }),
+      onConfirmClean: this.act(async () => {
         await this.api.confirmClean(cm.id);
         await this.refresh();
         openDecision();
-      },
+      }),
       // ── "quick" main-button actions: apply the default with no extra screen ──
-      onConfirmCleanQuick: async () => {
+      onConfirmCleanQuick: this.act(async () => {
         await this.api.confirmClean(cm.id);
         const c2 = await this.api.getCommitment(cm.id);
         const rr = c2.current_rung;
         await this.api.chooseNextRung(cm.id, { days: this.api.suggestNextRung(rr.days), stake: rr.stake });
         await this.refresh();
         this.setState({ view: 'dashboard' });
-      },
-      onDecisionQuick: async () => {
+      }),
+      onDecisionQuick: this.act(async () => {
         const rr = cm.current_rung;
         await this.api.chooseNextRung(cm.id, { days: this.api.suggestNextRung(rr.days), stake: rr.stake });
         await this.refresh();
         this.setState({ view: 'dashboard' });
-      },
-      onSlipQuick: async () => { await this.api.reportSlip(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); },
-      onMissQuick: async () => { await this.api.reportMiss(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); },
+      }),
+      onSlipQuick: this.act(async () => { await this.api.reportSlip(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); }),
+      onMissQuick: this.act(async () => { await this.api.reportMiss(cm.id, { raise: true }); await this.refresh(); this.setState({ view: 'dashboard' }); }),
     };
   }
 
@@ -1426,13 +1468,13 @@ class Component extends DCLogic {
       setStake: e => this.setState({ lapseStake: e.target.value, lapseDry: null }),
       dry: !!S.lapseDry, dryChargedFmt: S.lapseDry ? this.money(S.lapseDry.charged) : null,
       dryRecommitFmt: (S.lapseDry && S.lapseDry.recommit) ? this.money(S.lapseDry.recommit.stake) : null,
-      onDry: async () => { const res = await this.api.reportSlip(cm.id, { dryRun: true, days: this.state.lapseDays, stake: this.state.lapseStake }); this.setState({ lapseDry: res }); },
-      onConfirm: async () => {
+      onDry: this.act(async () => { const res = await this.api.reportSlip(cm.id, { dryRun: true, days: this.state.lapseDays, stake: this.state.lapseStake }); this.setState({ lapseDry: res }); }),
+      onConfirm: this.act(async () => {
         const d = this.state.lapseDays, st = this.state.lapseStake;
         if (kind === 'miss') await this.api.reportMiss(cm.id, { days: d, stake: st }); else await this.api.reportSlip(cm.id, { days: d, stake: st });
         await this.refresh();
         this.setState({ view: 'dashboard', lapseDry: null });
-      },
+      }),
     };
   }
 
@@ -1681,6 +1723,8 @@ class Component extends DCLogic {
     return {
       loaded: S.loaded, notLoaded: !S.loaded,
       bootError: S.bootError, hasBootError: !!S.bootError, noBootError: !S.bootError,
+      actionError: S.actionError, hasActionError: !!S.actionError,
+      dismissActionError: () => this.setState({ actionError: '' }),
       reloadPage: () => location.reload(),
       dark: S.dark, darkLabel: S.dark ? 'Light' : 'Dark', rootStyle,
       hasExplicitTheme: this.hasExplicitTheme(),
@@ -1728,30 +1772,30 @@ class Component extends DCLogic {
       setCName: e => this.setState({ cName: e.target.value }),
       setCDays: e => this.setState({ cDays: e.target.value }),
       setCStake: e => this.setState({ cStake: e.target.value }),
-      submitCreate: async () => {
+      submitCreate: this.act(async () => {
         const s = this.state; const d = Math.round(Number(s.cDays)); const st = Number(s.cStake);
         if (!s.cName.trim()) return this.setState({ cError: 'Give your commitment a name.' });
         if (!(d >= 1)) return this.setState({ cError: 'Base length must be at least 1 day.' });
         if (!(st >= 1)) return this.setState({ cError: 'Stake must be at least $1.00.' });
         await this.api.createCommitment({ name: s.cName, base_days: d, base_stake: st });
         await this.refresh(); this.setState({ view: 'dashboard' });
-      },
+      }),
       setDecDays: e => this.setState({ decDays: e.target.value }),
       setDecStake: e => this.setState({ decStake: e.target.value }),
-      confirmDecision: async () => {
+      confirmDecision: this.act(async () => {
         const s = this.state; const d = Math.round(Number(s.decDays)); const st = Number(s.decStake);
         if (!(d >= 1)) return this.setState({ decError: 'Next rung must be at least 1 day.' });
         if (!(st >= 1)) return this.setState({ decError: 'Stake must be at least $1.00.' });
         await this.api.chooseNextRung(s.selectedId, { days: d, stake: st });
         await this.refresh(); this.setState({ view: 'dashboard' });
-      },
+      }),
       setSApiBase: e => this.setState({ sApiBase: e.target.value }),
       setSRecipient: e => this.setState({ sRecipient: e.target.value }),
-      saveSettings: async () => {
+      saveSettings: this.act(async () => {
         const s = this.state;
         await this.api.updateSettings({ apiBaseUrl: s.sApiBase, recipient: s.sRecipient });
         await this.refresh(); this.setState({ view: 'dashboard' });
-      },
+      }),
     };
   }
 }

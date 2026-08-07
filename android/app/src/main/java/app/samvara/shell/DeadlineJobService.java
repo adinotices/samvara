@@ -37,8 +37,11 @@ public class DeadlineJobService extends JobService {
 
     private static final String CHANNEL = "deadlines";
     private static final String DEFAULT_API_BASE = "https://samvara-api.fly.dev";
-    // Mirrors GRACE_MS in the web client and GRACE_HOURS on the server.
-    private static final long GRACE_MS = 24 * 3600_000L;
+    // Fallback only. The real window is GRACE_HOURS on the server, read from
+    // /v1/health each poll — every one of these notifications states how long
+    // is left before money moves, so a stale local copy would put a precise,
+    // confident, wrong number in front of the user.
+    private static final long DEFAULT_GRACE_MS = 24 * 3600_000L;
     private static final long H = 3600_000L;
 
     @Override
@@ -90,6 +93,7 @@ public class DeadlineJobService extends JobService {
         }
         JSONArray commitments = new JSONArray(body);
         long now = System.currentTimeMillis();
+        long graceMs = fetchGraceMs(base, token);
         Set<String> liveKeys = new HashSet<>();
 
         for (int i = 0; i < commitments.length(); i++) {
@@ -106,7 +110,7 @@ public class DeadlineJobService extends JobService {
             boolean resolved = r.optBoolean("completed") || r.optBoolean("awaiting_decision");
             boolean parked = r.optBoolean("awaiting_recommit") || r.optBoolean("auto_missed");
             long due = Instant.parse(r.getString("due")).toEpochMilli();
-            long graceEnd = due + GRACE_MS;
+            long graceEnd = due + graceMs;
 
             String prefix = id + "|" + rung + "|";
             if (parked) {
@@ -146,15 +150,50 @@ public class DeadlineJobService extends JobService {
         prefs.edit().putStringSet("fired", fired).apply();
     }
 
+    /**
+     * The server's grace window, in ms, from /v1/health (authenticated
+     * callers get grace_hours). Falls back to DEFAULT_GRACE_MS on any
+     * failure: a missed alert is far better than one quoting a made-up
+     * deadline, and the next poll tries again.
+     */
+    private long fetchGraceMs(String base, String token) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(base + "/v1/health").openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            if (conn.getResponseCode() != 200) return DEFAULT_GRACE_MS;
+            String body;
+            try (InputStream in = conn.getInputStream()) {
+                body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            double hours = new JSONObject(body).optDouble("grace_hours", -1);
+            // Guard hard: a bad value would shift every deadline shown.
+            if (!(hours > 0) || Double.isInfinite(hours)) return DEFAULT_GRACE_MS;
+            return (long) (hours * H);
+        } catch (Exception e) {
+            return DEFAULT_GRACE_MS;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
     /** Post the notification unless this exact key already fired. */
     private void notifyOnce(SharedPreferences prefs, String key, int notifyId,
                             String title, String text) {
         Set<String> fired = new HashSet<>(prefs.getStringSet("fired", new HashSet<>()));
         if (fired.contains(key)) return;
-        fired.add(key);
-        prefs.edit().putStringSet("fired", fired).apply();
 
         NotificationManager nm = getSystemService(NotificationManager.class);
+        // Bail out BEFORE burning the key when notifications are switched off.
+        // From API 33 POST_NOTIFICATIONS is a runtime grant and notify() is a
+        // silent no-op without it, so marking the key fired here would retire
+        // an alert that was never shown: the user grants permission later and
+        // that rung's warning simply never arrives. Leaving the key unfired
+        // means the next poll re-posts it for real.
+        if (!nm.areNotificationsEnabled()) return;
+
         nm.createNotificationChannel(new NotificationChannel(
                 CHANNEL, "Deadlines", NotificationManager.IMPORTANCE_HIGH));
 
@@ -170,5 +209,9 @@ public class DeadlineJobService extends JobService {
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build());
+
+        // Recorded only once it has actually been posted.
+        fired.add(key);
+        prefs.edit().putStringSet("fired", fired).apply();
     }
 }

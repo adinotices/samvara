@@ -336,11 +336,14 @@ async def auto_miss(cid: str) -> dict[str, Any]:
 # Fixed vocabulary: the tracked metrics, in display order. `ratio: True` marks
 # the ones whose days-with-data ratio the Ratios subtab shows. The frontend
 # renders whatever this returns, so adding a metric here is the whole change.
+# Optional `start_day` overrides the global tracking epoch for a metric's own
+# ratio denominator, so a metric added after 2026-07-03 isn't diluted by days
+# before it existed.
 METRICS: list[dict[str, Any]] = [
     {"key": "porn_viewed", "label": "Porn viewed", "ratio": True},
     {"key": "sexual_content_viewed", "label": "Non-porn sexual content viewed", "ratio": True},
     {"key": "masturbation", "label": "Masturbations", "ratio": True},
-    {"key": "eating_animal_body_parts", "label": "Eating Animal Body Parts", "ratio": True},
+    {"key": "eating_animal_body_parts", "label": "Eating Animal Body Parts", "ratio": True, "start_day": "2026-08-08"},
     {"key": "gaze_goal_set", "label": "Goal set: not looking at women with sexual desire", "ratio": False},
     {"key": "gaze_goal_broken", "label": "That goal broken", "ratio": False},
 ]

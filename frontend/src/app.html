@@ -1615,14 +1615,17 @@ class Component extends DCLogic {
         };
       });
 
-      const denom = days.length;
       vm.ratios = M.metrics.filter(m => m.ratio).map(m => {
         const s = series[m.key] || {};
-        const withData = days.filter(d => (s[d] || 0) > 0).length;
+        // A metric's own start_day (if later than the global epoch) keeps
+        // days before it existed from diluting its ratio.
+        const metricStart = (m.start_day && m.start_day > start) ? m.start_day : start;
+        const metricDays = metricStart === start ? days : this.dayRange(metricStart, today);
+        const withData = metricDays.filter(d => (s[d] || 0) > 0).length;
         return {
           key: m.key, label: m.label,
-          value: (withData / denom).toFixed(2),
-          daysLabel: withData + ' of ' + denom + ' tracked days',
+          value: (withData / metricDays.length).toFixed(2),
+          daysLabel: withData + ' of ' + metricDays.length + ' tracked days',
         };
       });
     }

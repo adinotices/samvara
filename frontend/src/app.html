@@ -1552,7 +1552,12 @@ class Component extends DCLogic {
     // Ratios use the FULL range since tracking began; graphs cap at the last
     // 180 days so the bars stay readable.
     const days = start ? this.dayRange(start, today) : [];
-    const graphDays = days.slice(-180);
+    // A metric's own start_day (if later than the global epoch) keeps days
+    // before it existed from diluting its graph and ratio.
+    const metricRange = m => {
+      const s0 = (m.start_day && m.start_day > start) ? m.start_day : start;
+      return s0 === start ? days : this.dayRange(s0, today);
+    };
     vm.noData = !start;
     vm.hasData = !!start;
     vm.startLabel = start || '';
@@ -1584,7 +1589,8 @@ class Component extends DCLogic {
     if (start) {
       vm.graphs = M.metrics.map(m => {
         const s = series[m.key] || {};
-        const values = graphDays.map(d => s[d] || 0);
+        const mDays = metricRange(m).slice(-180);
+        const values = mDays.map(d => s[d] || 0);
         const max = Math.max(1, ...values);
         const total = values.reduce((a, v) => a + v, 0);
         const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
@@ -1611,16 +1617,13 @@ class Component extends DCLogic {
         return {
           key: m.key, label: m.label, total: String(total), max: String(max),
           bars, dots: values.length > 1 ? dots : [],
-          startLabel: graphDays[0], endLabel: today,
+          startLabel: mDays[0], endLabel: today,
         };
       });
 
       vm.ratios = M.metrics.filter(m => m.ratio).map(m => {
         const s = series[m.key] || {};
-        // A metric's own start_day (if later than the global epoch) keeps
-        // days before it existed from diluting its ratio.
-        const metricStart = (m.start_day && m.start_day > start) ? m.start_day : start;
-        const metricDays = metricStart === start ? days : this.dayRange(metricStart, today);
+        const metricDays = metricRange(m);
         const withData = metricDays.filter(d => (s[d] || 0) > 0).length;
         return {
           key: m.key, label: m.label,

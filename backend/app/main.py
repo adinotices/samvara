@@ -340,6 +340,7 @@ METRICS: list[dict[str, Any]] = [
     {"key": "porn_viewed", "label": "Porn viewed", "ratio": True},
     {"key": "sexual_content_viewed", "label": "Non-porn sexual content viewed", "ratio": True},
     {"key": "masturbation", "label": "Masturbations", "ratio": True},
+    {"key": "eating_animal_body_parts", "label": "Eating Animal Body Parts", "ratio": True},
     {"key": "gaze_goal_set", "label": "Goal set: not looking at women with sexual desire", "ratio": False},
     {"key": "gaze_goal_broken", "label": "That goal broken", "ratio": False},
 ]

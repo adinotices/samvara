@@ -4,6 +4,7 @@ Run from backend/:  python -m pytest -q tests/test_api.py
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import sys
 import tempfile
@@ -122,3 +123,58 @@ def test_commitments_listed_closest_deadline_first():
     names = [c["name"] for c in client.get("/v1/commitments", headers=HDR).json()]
     assert names[0] == "Near"
     assert far and mid  # ids used; silence linters
+
+
+# ── payload aggregates (keep the client off lifetime day-by-day history) ─────
+def test_metrics_stats_carry_ratio_and_last_day():
+    """The ratio's numerator/denominator and the streak's anchor are computed
+    server-side, so the series payload can stay bounded to the graph window."""
+    today = main.metrics_today()
+    old = "2020-01-01"          # far outside any graph window
+    with store.lock, store._conn:
+        store._conn.execute(
+            "INSERT OR REPLACE INTO metric_days (metric, day, count) VALUES (?,?,?)",
+            ("porn_viewed", old, 2))
+    out = client.get("/v1/metrics", headers=HDR).json()
+
+    st = out["stats"]["porn_viewed"]
+    assert st["last_day"] == old          # survives the series bound
+    assert st["start"] == main.TRACKING_START_DAY
+    assert st["ratio_days"] == 0          # before tracking began: not counted
+    assert st["tracked_days"] >= 1
+    # A metric with its own start_day gets its own, later denominator.
+    eating = out["stats"]["eating_animal_body_parts"]
+    assert eating["start"] == "2026-08-08"
+    assert eating["tracked_days"] < st["tracked_days"]
+    assert out["trackingStart"] == main.TRACKING_START_DAY
+    assert out["graphWindowDays"] == main.GRAPH_WINDOW_DAYS
+
+    # The day itself is far too old to be shipped day-by-day.
+    assert old not in out["series"].get("porn_viewed", {})
+    assert today == out["today"]
+
+
+def test_metrics_series_is_bounded_to_the_graph_window():
+    today = dt.date.fromisoformat(main.metrics_today())
+    inside = (today - dt.timedelta(days=main.GRAPH_WINDOW_DAYS - 1)).isoformat()
+    outside = (today - dt.timedelta(days=main.GRAPH_WINDOW_DAYS + 5)).isoformat()
+    with store.lock, store._conn:
+        for day in (inside, outside):
+            store._conn.execute(
+                "INSERT OR REPLACE INTO metric_days (metric, day, count) VALUES (?,?,?)",
+                ("masturbation", day, 1))
+    series = client.get("/v1/metrics", headers=HDR).json()["series"]["masturbation"]
+    assert inside in series
+    assert outside not in series
+
+
+def test_metric_stats_tolerate_a_future_start_day(monkeypatch):
+    """A start_day set ahead of today must not yield a zero denominator (the
+    client rendered that as a literal "NaN")."""
+    future = (dt.date.fromisoformat(main.metrics_today()) + dt.timedelta(days=30)).isoformat()
+    monkeypatch.setattr(main, "METRICS", [
+        {"key": "porn_viewed", "label": "Porn viewed", "ratio": True, "start_day": future},
+    ])
+    st = main._metric_stats(main.metrics_today())["porn_viewed"]
+    assert st["tracked_days"] == 1
+    assert st["start"] == main.metrics_today()

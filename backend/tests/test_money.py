@@ -17,6 +17,7 @@ Run from backend/:  python -m pytest -q tests/test_money.py
 from __future__ import annotations
 
 import asyncio
+import datetime
 import math
 import os
 import sys
@@ -71,7 +72,8 @@ def fake_charge(fail_for: set[float] | None = None, delay: float = 0.0):
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     CHARGES.clear()
-    main._recent_lapse.clear()
+    # The lapse debounce now lives on the commitment row (last_lapse_ms), so
+    # the DELETE FROM commitments below is what resets it.
     # asyncio.Lock binds to the first event loop that touches it; each
     # asyncio.run() here is a fresh loop, so give each test a fresh lock.
     monkeypatch.setattr(main, "_charge_lock", asyncio.Lock())
@@ -433,3 +435,48 @@ def test_day_end_utc_falls_back_on_missing_or_bogus_tz():
     assert main._day_end_utc("2026-07-18", None) == ny
     assert main._day_end_utc("2026-07-18", "not-a-real-tz") == ny
     assert ny == main._day_end_utc("2026-07-18", settings.metrics_tz)
+
+
+def test_day_end_utc_never_closes_before_the_metrics_tz_day_is_over():
+    """A device east of METRICS_TZ must not truncate the day it labels.
+
+    A tap is filed under metrics_today() — the calendar day in METRICS_TZ,
+    which is what the UI promises. Closing that day at Tokyo's midnight alone
+    would land thirteen hours INSIDE the NY day, so every later tap that same
+    day would be billed by the next tick within minutes and the -1 undo window
+    the deferred charge exists to provide would be gone. The close is clamped
+    to the later of the two clocks.
+    """
+    day = "2026-07-18"
+    ny_end = main._day_end_utc(day, "America/New_York")
+
+    # East of METRICS_TZ: clamped up to the NY end, never earlier.
+    assert main._day_end_utc(day, "Asia/Tokyo") == ny_end
+    assert main._day_end_utc(day, "Europe/London") == ny_end
+    assert main._day_end_utc(day, "UTC") == ny_end
+
+    # West of it: still extends past the server's midnight. Harmless, and it
+    # keeps the window open for a traveler who is still awake.
+    la_end = main._day_end_utc(day, "America/Los_Angeles")
+    assert la_end - ny_end == datetime.timedelta(hours=3)
+
+
+def test_lapse_debounce_is_persisted_not_in_memory(monkeypatch):
+    """The debounce must outlive the process: a slip leaves a FRESH rung, so
+    the 'already resolved' check cannot catch a duplicate report — this
+    timestamp is the only thing that can."""
+    monkeypatch.setattr(beeminder, "charge", fake_charge())
+    monkeypatch.setattr(settings, "lapse_debounce_s", 30.0)
+    cm = mk(stake=5.0)
+    r1 = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
+    assert r1.status_code == 200 and CHARGES == [5.0]
+
+    # The debounce state is on the stored row, not in a module-level dict, so
+    # it is still there after a restart drops every in-process structure.
+    assert isinstance(store.get_commitment(cm["id"])["last_lapse_ms"], int)
+    assert not hasattr(main, "_recent_lapse")
+
+    # A second report inside the window is refused from stored state alone.
+    r2 = client.post(f"/v1/commitments/{cm['id']}/slip", headers=HDR, json={})
+    assert r2.status_code == 409
+    assert CHARGES == [5.0] and total_charged() == 5.0

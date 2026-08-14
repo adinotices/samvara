@@ -164,16 +164,56 @@ class Store:
             )
         return new
 
-    def metric_series(self) -> dict[str, dict[str, int]]:
-        """{metric: {day: count}} for every recorded day (zeros included)."""
+    def metric_series(self, since: str | None = None) -> dict[str, dict[str, int]]:
+        """{metric: {day: count}} for recorded days (zeros included).
+
+        `since` bounds the result to days >= that label. The client only draws
+        a fixed-width graph window, so sending its whole history would grow the
+        payload forever for data nothing renders.
+        """
         with self.lock:
-            rows = self._conn.execute(
-                "SELECT metric, day, count FROM metric_days ORDER BY day ASC"
-            ).fetchall()
+            if since is None:
+                rows = self._conn.execute(
+                    "SELECT metric, day, count FROM metric_days ORDER BY day ASC"
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT metric, day, count FROM metric_days WHERE day >= ?"
+                    " ORDER BY day ASC",
+                    (since,),
+                ).fetchall()
         out: dict[str, dict[str, int]] = {}
         for metric, day, count in rows:
             out.setdefault(metric, {})[day] = count
         return out
+
+    def metric_last_days(self) -> dict[str, str]:
+        """{metric: latest day with a non-zero count}, over ALL history.
+
+        Deliberately unbounded: "how long since this last happened" must see
+        an occurrence older than the graph window, or a long clean run would
+        be reported as "never recorded".
+        """
+        with self.lock:
+            rows = self._conn.execute(
+                "SELECT metric, MAX(day) FROM metric_days WHERE count > 0"
+                " GROUP BY metric"
+            ).fetchall()
+        return {metric: day for metric, day in rows if day is not None}
+
+    def metric_days_with_data(self, metric: str, since: str) -> int:
+        """How many days on/after `since` have a non-zero count for `metric`.
+
+        The ratio numerator, aggregated here so the client never needs a
+        lifetime day-by-day series just to divide two numbers.
+        """
+        with self.lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM metric_days"
+                " WHERE metric = ? AND day >= ? AND count > 0",
+                (metric, since),
+            ).fetchone()
+        return row[0] if row else 0
 
     def metric_count(self, metric: str, day: str) -> int:
         with self.lock:

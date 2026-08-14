@@ -23,7 +23,6 @@ import asyncio
 import datetime as dt
 import logging
 import sqlite3
-import time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -224,10 +223,8 @@ async def update_settings(patch: SettingsPatch) -> dict[str, Any]:
 # (Process-level, like store.lock — hence the single-worker Dockerfile CMD.)
 _charge_lock = asyncio.Lock()
 
-# monotonic timestamp of the last live lapse charge per commitment, for the
-# duplicate-report debounce below. In-memory is enough: single worker, and the
-# window is seconds.
-_recent_lapse: dict[str, float] = {}
+# The duplicate-report debounce reads cm["last_lapse_ms"], written by
+# ratchet.apply_slip and persisted with the commitment — see _slip_or_miss.
 
 
 async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
@@ -261,14 +258,14 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
                 status.HTTP_409_CONFLICT,
                 "This rung is already resolved (it may have just auto-charged); "
                 "recommit instead of reporting a lapse.")
-        last = _recent_lapse.get(cid)
-        if last is not None and time.monotonic() - last < settings.lapse_debounce_s:
+        last = cm.get("last_lapse_ms")
+        if last is not None and 0 <= ratchet.now_ms() - last < settings.lapse_debounce_s * 1000:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 "Duplicate lapse report: a charge for this commitment just landed.")
         charged = cur["stake"]
         new_days, new_stake = ratchet.resolve_recommit(
-        cur, body.raise_, body.days, body.stake, max_stake=settings.max_charge)
+            cur, body.raise_, body.days, body.stake, max_stake=settings.max_charge)
         result["charged"] = charged
         result["recommit"] = {"days": new_days, "stake": new_stake}
 
@@ -278,15 +275,11 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
         with store.lock:
+            # apply_slip stamps cm["last_lapse_ms"]; persisting it here is what
+            # makes the debounce above outlive the process.
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
             store.add_total_charged(charged)
             store.update_commitment(cm)
-        now_mono = time.monotonic()
-        _recent_lapse[cid] = now_mono
-        # Prune entries past the window so the dict can't grow forever.
-        cutoff = now_mono - settings.lapse_debounce_s
-        for k in [k for k, v in _recent_lapse.items() if v < cutoff]:
-            del _recent_lapse[k]
 
     result["commitment"] = cm
     result["charge"] = charge.as_dict()
@@ -349,6 +342,16 @@ METRICS: list[dict[str, Any]] = [
 ]
 _METRIC_KEYS = {m["key"] for m in METRICS}
 
+# The day tallying began. Authoritative here and published in the metrics
+# payload — the frontend used to carry its own copy of this date, which meant
+# two places to change and a silent disagreement if only one moved.
+TRACKING_START_DAY = "2026-07-03"
+
+# How many days of daily counts the graphs draw. Also bounds the series in the
+# payload, so history older than this is aggregated server-side rather than
+# shipped day by day on every Data-tab visit.
+GRAPH_WINDOW_DAYS = 180
+
 # ── end-of-day Beeminder penalty on the "goal broken" tally ──────────────────
 # Every +1 here is $1 at stake, but not charged the moment it's tapped: it's
 # deferred until the day closes (device tz if the client sent one, else
@@ -374,34 +377,84 @@ def metrics_today(now: dt.datetime | None = None) -> str:
 
 
 def _day_end_utc(day: str, tz_name: str | None) -> dt.datetime:
-    """The instant `day` (YYYY-MM-DD) closes — i.e. its next midnight in `tz_name`.
+    """The instant `day` (YYYY-MM-DD) closes, never before it is genuinely over.
 
-    Falls back to METRICS_TZ if `tz_name` is missing or not a tz the server
-    recognizes (e.g. a client sent garbage or nothing at all).
+    A tap is filed under metrics_today(), i.e. the calendar day in METRICS_TZ —
+    which is what the UI promises ("each tap lands on today in New York time").
+    Closing that day at the *device's* midnight alone is therefore wrong for
+    any device east of METRICS_TZ: from Asia/Tokyo, the NY day 2026-08-14
+    would close at 15:00Z, thirteen hours INSIDE the day it labels. Every tap
+    after that point would be billed by the next tick within minutes,
+    collapsing the -1 undo window the deferred charge exists to provide.
+
+    So take the later of the two. A device west of METRICS_TZ still extends the
+    window past the server's midnight (harmless, and kinder to a traveler who
+    is still awake); a device east of it can no longer truncate the day.
+
+    Falls back to METRICS_TZ alone if `tz_name` is missing or not a tz the
+    server recognizes (e.g. a client sent garbage or nothing at all).
     """
-    try:
-        zone = ZoneInfo(tz_name) if tz_name else ZoneInfo(settings.metrics_tz)
-    except Exception:
-        zone = ZoneInfo(settings.metrics_tz)
     d = dt.date.fromisoformat(day)
-    midnight = dt.datetime(d.year, d.month, d.day, tzinfo=zone)
-    return midnight + dt.timedelta(days=1)
+
+    def next_midnight(zone: ZoneInfo) -> dt.datetime:
+        return dt.datetime(d.year, d.month, d.day, tzinfo=zone) + dt.timedelta(days=1)
+
+    server_end = next_midnight(ZoneInfo(settings.metrics_tz))
+    try:
+        device_zone = ZoneInfo(tz_name) if tz_name else None
+    except Exception:
+        device_zone = None
+    if device_zone is None:
+        return server_end
+    return max(next_midnight(device_zone), server_end)
 
 
 def _penalty_note(count: int, day: str) -> str:
     return f"Samvara: penalty for looking at women with sexual desire ({count}x on {day})"
 
 
+def _metric_stats(today: str) -> dict[str, dict[str, Any]]:
+    """Per-metric figures the client would otherwise need full history for.
+
+    `ratio_days`/`tracked_days` are the ratio's numerator and denominator over
+    the metric's whole tracked span; `last_day` is the newest day with an
+    occurrence, over all history. Aggregating here is what lets the series
+    payload stay bounded to the graph window.
+    """
+    last_days = store.metric_last_days()
+    today_d = dt.date.fromisoformat(today)
+    out: dict[str, dict[str, Any]] = {}
+    for m in METRICS:
+        start = m.get("start_day") or TRACKING_START_DAY
+        if start > today:          # a start_day set in the future
+            start = today
+        tracked = (today_d - dt.date.fromisoformat(start)).days + 1
+        out[m["key"]] = {
+            "start": start,
+            "tracked_days": tracked,
+            "ratio_days": store.metric_days_with_data(m["key"], start),
+            "last_day": last_days.get(m["key"]),
+        }
+    return out
+
+
 def _metrics_payload() -> dict[str, Any]:
     today = metrics_today()
-    series = store.metric_series()
-    count = series.get(PENALTY_METRIC, {}).get(today, 0)
+    # Bounded to the graph window: the ratio and the streak are precomputed in
+    # _metric_stats, so nothing on the client needs day-by-day history beyond
+    # what it actually draws.
+    since = (dt.date.fromisoformat(today) - dt.timedelta(days=GRAPH_WINDOW_DAYS)).isoformat()
+    series = store.metric_series(since=since)
+    count = store.metric_count(PENALTY_METRIC, today)
     penalty_row = store.get_penalty_day(today)
     charged = penalty_row["charged_count"] if penalty_row else 0
     return {
         "metrics": METRICS,
         "series": series,
+        "stats": _metric_stats(today),
         "today": today,
+        "trackingStart": TRACKING_START_DAY,
+        "graphWindowDays": GRAPH_WINDOW_DAYS,
         "pendingPenalty": {"amount": max(0, count - charged)},
     }
 

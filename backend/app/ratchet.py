@@ -160,6 +160,10 @@ def apply_slip(cm: Commitment, new_days: int, new_stake: float, charged: float,
         "days": cur["days"], "stake": charged, "outcome": outcome, "settled": iso_date(at),
     })
     cm["current_rung"] = make_rung(new_days, new_stake, at)
+    # Persisted so the duplicate-report debounce in main.py survives a restart.
+    # A slip leaves a FRESH rung behind, so the "already resolved" check can't
+    # catch a double report — this timestamp is the only thing that can.
+    cm["last_lapse_ms"] = at
 
 
 def apply_auto_miss(cm: Commitment, charged: float, at_ms: int | None = None) -> bool:

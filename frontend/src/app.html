@@ -1570,27 +1570,54 @@ class Component extends DCLogic {
     };
     if (!M) return vm;
 
+    const D = this.derivedMetrics(M);
+    vm.noData = D.noData;
+    vm.hasData = D.hasData;
+    vm.startLabel = D.startLabel;
+    vm.rows = D.rows.map(r => ({
+      ...r,
+      onPlus: () => this.bump(r.key, 1),
+      onMinus: () => this.bump(r.key, -1),
+    }));
+    vm.graphs = D.graphs;
+    vm.ratios = D.ratios;
+    vm.streaks = D.streaks;
+    return vm;
+  }
+
+  // Everything below is derived purely from the metrics payload, but the app
+  // re-renders once a second (the countdown clock), so recomputing it per
+  // frame burned real CPU that grew with history — day-by-day array building
+  // for every metric, every second. It changes only when the payload does, so
+  // it is cached on that object's identity.
+  derivedMetrics(M) {
+    if (this._derivedCache && this._derivedCache.src === M) return this._derivedCache.out;
+    const out = this.computeDerivedMetrics(M);
+    this._derivedCache = { src: M, out };
+    return out;
+  }
+
+  computeDerivedMetrics(M) {
     const series = M.series || {};
+    const stats = M.stats || {};
     const today = M.today;
-    // Tracking officially began 2026-07-03: graphs and the ratio denominator
-    // start there, with zeros filled in for days that saw no data.
-    const TRACK_START = '2026-07-03';
-    const start = today >= TRACK_START ? TRACK_START : today;
-    // Ratios use the FULL range since tracking began; graphs cap at the last
-    // 180 days so the bars stay readable.
-    const days = start ? this.dayRange(start, today) : [];
-    // A metric's own start_day (if later than the global epoch) keeps days
-    // before it existed from diluting its graph and ratio.
-    const metricRange = m => {
-      // Clamped to today: a start_day set in the future would otherwise make
-      // an empty range, and an empty denominator renders as "NaN".
-      let s0 = (m.start_day && m.start_day > start) ? m.start_day : start;
-      if (s0 > today) s0 = today;
-      return s0 === start ? days : this.dayRange(s0, today);
+    // The server owns these now — it aggregates the ratio and the last
+    // occurrence over full history and sends only the graph window day by day,
+    // so the payload no longer grows without bound and neither does this.
+    const trackingStart = M.trackingStart || '2026-07-03';
+    const windowDays = M.graphWindowDays || 180;
+    const statFor = m => stats[m.key] || {};
+    const dayNum = d => Math.round(Date.parse(d + 'T00:00:00Z') / 864e5);
+
+    // The empty states used to key off `start`, which is always a non-empty
+    // string — so they were unreachable. What they actually mean is "nothing
+    // has ever been recorded".
+    const anyData = Object.keys(series).some(
+      k => Object.keys(series[k]).some(d => series[k][d] > 0));
+    const out = {
+      noData: !anyData, hasData: anyData, startLabel: trackingStart,
+      rows: [], graphs: [], ratios: [], streaks: [],
     };
-    vm.noData = !start;
-    vm.hasData = !!start;
-    vm.startLabel = start || '';
 
     const pendingAmount = (M.pendingPenalty && M.pendingPenalty.amount) || 0;
     const plusStyle = isPenalty => ({
@@ -1598,108 +1625,111 @@ class Component extends DCLogic {
       background: isPenalty ? 'var(--missed,#a3573a)' : 'var(--accent,#3d6b52)',
       color: 'var(--accent-fg,#fff)', fontSize: '14.5px', fontWeight: '600',
     });
-    vm.rows = M.metrics.map(m => {
+    out.rows = M.metrics.map(m => {
       const isPenalty = m.key === 'gaze_goal_broken';
       return {
         key: m.key, label: m.label,
         todayCount: String((series[m.key] || {})[today] || 0),
-        onPlus: () => this.bump(m.key, 1),
-        onMinus: () => this.bump(m.key, -1),
         plusStyle: plusStyle(isPenalty),
         // Always-on warning for this one row: every +1 is $1, real money,
         // charged once today closes — not a mere tally like the others.
         hasCaption: isPenalty,
         captionLabel: pendingAmount > 0
           ? '$' + pendingAmount.toFixed(2) + ' pending — charges at 11:59 PM'
-          : '$1 per tap — charged at day’s end, via Beeminder',
+          : '$1 per tap — charged at day\u2019s end, via Beeminder',
         captionColor: pendingAmount > 0 ? 'var(--missed,#a3573a)' : 'var(--muted,#77746c)',
       };
     });
 
-    if (start) {
-      vm.graphs = M.metrics.map(m => {
-        const s = series[m.key] || {};
-        const mDays = metricRange(m).slice(-180);
-        const values = mDays.map(d => s[d] || 0);
-        const max = Math.max(1, ...values);
-        const total = values.reduce((a, v) => a + v, 0);
-        const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
-        const bars = values.map(v => ({
+    out.graphs = M.metrics.map(m => {
+      const s = series[m.key] || {};
+      // The window starts at the metric's own start day when that is later,
+      // so days before it existed don't pad its graph with fake zeros, and
+      // never reaches further back than the window the server sends.
+      const windowFirst = new Date(Date.parse(today + 'T00:00:00Z') - (windowDays - 1) * 864e5)
+        .toISOString().slice(0, 10);
+      let first = statFor(m).start || trackingStart;
+      if (first < windowFirst) first = windowFirst;
+      if (first > today) first = today;
+      const mDays = this.dayRange(first, today);
+      const values = mDays.map(d => s[d] || 0);
+      const max = Math.max(1, ...values);
+      const total = values.reduce((a, v) => a + v, 0);
+      const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
+      const bars = values.map(v => ({
+        style: {
+          flex: '1', minWidth: '0', borderRadius: '2px 2px 0 0',
+          height: v > 0 ? Math.round(6 + (v / max) * 84) + 'px' : '2px',
+          background: v > 0 ? color : 'var(--surface2,#eceae4)',
+        },
+      }));
+      // Trailing 7-day average, one dot per day, over the same x positions.
+      // Running sum rather than a fresh slice+reduce per point.
+      let win = 0;
+      const dots = values.map((v, i) => {
+        win += v;
+        if (i >= 7) win -= values[i - 7];
+        const avg = win / Math.min(i + 1, 7);
+        return {
           style: {
-            flex: '1', minWidth: '0', borderRadius: '2px 2px 0 0',
-            height: v > 0 ? Math.round(6 + (v / max) * 84) + 'px' : '2px',
-            background: v > 0 ? color : 'var(--surface2,#eceae4)',
+            position: 'absolute', width: '5px', height: '5px', borderRadius: '50%',
+            background: 'var(--lapse,#9c7d33)', border: '1px solid var(--surface,#fbfaf7)',
+            left: 'calc(' + (((i + 0.5) / values.length) * 100).toFixed(3) + '% - 3px)',
+            bottom: Math.round((avg / max) * 90) + 'px',
           },
-        }));
-        // Trailing 7-day average, one dot per day, over the same x positions.
-        const dots = values.map((v, i) => {
-          const win = values.slice(Math.max(0, i - 6), i + 1);
-          const avg = win.reduce((a, x) => a + x, 0) / win.length;
-          return {
-            style: {
-              position: 'absolute', width: '5px', height: '5px', borderRadius: '50%',
-              background: 'var(--lapse,#9c7d33)', border: '1px solid var(--surface,#fbfaf7)',
-              left: 'calc(' + (((i + 0.5) / values.length) * 100).toFixed(3) + '% - 3px)',
-              bottom: Math.round((avg / max) * 90) + 'px',
-            },
-          };
-        });
-        return {
-          key: m.key, label: m.label, total: String(total), max: String(max),
-          bars, dots: values.length > 1 ? dots : [],
-          startLabel: mDays[0], endLabel: today,
         };
       });
+      return {
+        key: m.key, label: m.label, total: String(total), max: String(max),
+        bars, dots: values.length > 1 ? dots : [],
+        startLabel: mDays[0], endLabel: today,
+      };
+    });
 
-      vm.ratios = M.metrics.filter(m => m.ratio).map(m => {
-        const s = series[m.key] || {};
-        const metricDays = metricRange(m);
-        const withData = metricDays.filter(d => (s[d] || 0) > 0).length;
-        return {
-          key: m.key, label: m.label,
-          value: (withData / metricDays.length).toFixed(2),
-          daysLabel: withData + ' of ' + metricDays.length + ' tracked days',
-        };
-      });
+    // Ratio numerator/denominator come from the server, which counts over the
+    // metric's whole tracked span — the client no longer needs a lifetime
+    // day-by-day series just to divide two numbers.
+    out.ratios = M.metrics.filter(m => m.ratio).map(m => {
+      const st = statFor(m);
+      const tracked = st.tracked_days || 0;
+      const withData = st.ratio_days || 0;
+      return {
+        key: m.key, label: m.label,
+        value: tracked > 0 ? (withData / tracked).toFixed(2) : '0.00',
+        daysLabel: withData + ' of ' + tracked + ' tracked days',
+      };
+    });
 
-      // "How long since this last happened" is a question about the whole
-      // recorded series, so — unlike the ratio denominator — it deliberately
-      // ignores start_day and the graph's 180-day cap. Truncating here would
-      // make a metric whose first taps predate its start_day report "none
-      // recorded" while its own graph is empty only because of the cutoff.
-      const dayNum = d => Math.round(Date.parse(d + 'T00:00:00Z') / 864e5);
-      vm.streaks = M.metrics.filter(m => m.ratio).map(m => {
-        const s = series[m.key] || {};
-        // Latest day with an occurrence, anywhere in the series. Future days
-        // are ignored so a stray one can't yield a negative streak.
-        let lastDay = null;
-        for (const d of Object.keys(s)) {
-          if ((s[d] || 0) > 0 && d <= today && (lastDay === null || d > lastDay)) lastDay = d;
-        }
-        if (lastDay) {
-          const daysSince = dayNum(today) - dayNum(lastDay);
-          return {
-            key: m.key, label: m.label, value: String(daysSince),
-            unitLabel: daysSince === 1 ? 'day' : 'days',
-            valueColor: 'var(--fg,#1d1c19)',
-            detailLabel: daysSince === 0 ? 'last occurred today' : ('last occurred ' + lastDay),
-          };
-        }
-        // Never recorded at all: report the clean run as the tracked span,
-        // counted inclusively so it can't collide with a metric that did
-        // occur on its very first tracked day.
-        const metricDays = metricRange(m);
-        const since = metricDays[0] || today;
-        const cleanDays = dayNum(today) - dayNum(since) + 1;
+    // "How long since this last happened" is a question about the whole
+    // recorded history, so it uses the server's last_day (computed over every
+    // stored day) rather than the bounded series the graphs draw from.
+    out.streaks = M.metrics.filter(m => m.ratio).map(m => {
+      const st = statFor(m);
+      const lastDay = st.last_day && st.last_day <= today ? st.last_day : null;
+      if (lastDay) {
+        const daysSince = dayNum(today) - dayNum(lastDay);
         return {
-          key: m.key, label: m.label, value: String(cleanDays),
-          unitLabel: cleanDays === 1 ? 'day' : 'days',
-          valueColor: 'var(--accent,#3d6b52)',
-          detailLabel: 'never recorded — clean since ' + since,
+          key: m.key, label: m.label, value: String(daysSince),
+          unitLabel: daysSince === 1 ? 'day' : 'days',
+          valueColor: 'var(--fg,#1d1c19)',
+          detailLabel: daysSince === 0 ? 'last occurred today' : ('last occurred ' + lastDay),
         };
-      });
-    }
-    return vm;
+      }
+      // Never recorded at all: report the clean run as the tracked span,
+      // counted inclusively so it can't collide with a metric that did occur
+      // on its very first tracked day.
+      const since = st.start || trackingStart;
+      const cleanDays = (st.tracked_days != null)
+        ? st.tracked_days
+        : dayNum(today) - dayNum(since) + 1;
+      return {
+        key: m.key, label: m.label, value: String(cleanDays),
+        unitLabel: cleanDays === 1 ? 'day' : 'days',
+        valueColor: 'var(--accent,#3d6b52)',
+        detailLabel: 'never recorded \u2014 clean since ' + since,
+      };
+    });
+    return out;
   }
 
   // ── auth actions (server-side OTP — see backend /v1/auth/*) ─

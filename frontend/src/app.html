@@ -811,7 +811,7 @@
           </sc-for>
         </div>
         <sc-if value="{{ data.hasData }}">
-          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Share of days with at least one occurrence, counted from the first day anything was tracked ({{ data.startLabel }}) through today.</p>
+          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Share of days with at least one occurrence, through today. Counted from {{ data.startLabel }}, or from a metric’s own start date if it began being tracked later.</p>
         </sc-if>
       </sc-if>
 
@@ -1582,7 +1582,10 @@ class Component extends DCLogic {
     // A metric's own start_day (if later than the global epoch) keeps days
     // before it existed from diluting its graph and ratio.
     const metricRange = m => {
-      const s0 = (m.start_day && m.start_day > start) ? m.start_day : start;
+      // Clamped to today: a start_day set in the future would otherwise make
+      // an empty range, and an empty denominator renders as "NaN".
+      let s0 = (m.start_day && m.start_day > start) ? m.start_day : start;
+      if (s0 > today) s0 = today;
       return s0 === start ? days : this.dayRange(s0, today);
     };
     vm.noData = !start;
@@ -1659,14 +1662,20 @@ class Component extends DCLogic {
         };
       });
 
+      // "How long since this last happened" is a question about the whole
+      // recorded series, so — unlike the ratio denominator — it deliberately
+      // ignores start_day and the graph's 180-day cap. Truncating here would
+      // make a metric whose first taps predate its start_day report "none
+      // recorded" while its own graph is empty only because of the cutoff.
+      const dayNum = d => Math.round(Date.parse(d + 'T00:00:00Z') / 864e5);
       vm.streaks = M.metrics.filter(m => m.ratio).map(m => {
         const s = series[m.key] || {};
-        const metricDays = metricRange(m);
+        // Latest day with an occurrence, anywhere in the series. Future days
+        // are ignored so a stray one can't yield a negative streak.
         let lastDay = null;
-        for (let i = metricDays.length - 1; i >= 0; i--) {
-          if ((s[metricDays[i]] || 0) > 0) { lastDay = metricDays[i]; break; }
+        for (const d of Object.keys(s)) {
+          if ((s[d] || 0) > 0 && d <= today && (lastDay === null || d > lastDay)) lastDay = d;
         }
-        const dayNum = d => Math.round(Date.parse(d + 'T00:00:00Z') / 864e5);
         if (lastDay) {
           const daysSince = dayNum(today) - dayNum(lastDay);
           return {
@@ -1676,14 +1685,17 @@ class Component extends DCLogic {
             detailLabel: daysSince === 0 ? 'last occurred today' : ('last occurred ' + lastDay),
           };
         }
-        // Never recorded within the known range: count from when tracking
-        // of this metric began instead (its own start_day, or the epoch).
-        const daysSince = dayNum(today) - dayNum(metricDays[0]);
+        // Never recorded at all: report the clean run as the tracked span,
+        // counted inclusively so it can't collide with a metric that did
+        // occur on its very first tracked day.
+        const metricDays = metricRange(m);
+        const since = metricDays[0] || today;
+        const cleanDays = dayNum(today) - dayNum(since) + 1;
         return {
-          key: m.key, label: m.label, value: String(daysSince),
-          unitLabel: daysSince === 1 ? 'day' : 'days',
+          key: m.key, label: m.label, value: String(cleanDays),
+          unitLabel: cleanDays === 1 ? 'day' : 'days',
           valueColor: 'var(--accent,#3d6b52)',
-          detailLabel: 'none recorded since tracking began (' + metricDays[0] + ')',
+          detailLabel: 'never recorded — clean since ' + since,
         };
       });
     }

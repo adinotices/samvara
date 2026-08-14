@@ -49,9 +49,9 @@ def test_metrics_vocabulary_and_empty_series():
     out = client.get("/v1/metrics", headers=HDR).json()
     keys = [m["key"] for m in out["metrics"]]
     assert keys == ["porn_viewed", "sexual_content_viewed", "masturbation",
-                    "gaze_goal_set", "gaze_goal_broken"]
-    # Ratios apply to the first three only.
-    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:3]
+                    "eating_animal_body_parts", "gaze_goal_set", "gaze_goal_broken"]
+    # Ratios apply to the first four only.
+    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:4]
     assert out["series"] == {}
     assert out["today"] == main.metrics_today()
 

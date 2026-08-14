@@ -730,6 +730,7 @@
         <button onclick="{{ data.goTrack }}" style="{{ data.trackTabStyle }}">Track</button>
         <button onclick="{{ data.goGraphs }}" style="{{ data.graphsTabStyle }}">Graphs</button>
         <button onclick="{{ data.goRatios }}" style="{{ data.ratiosTabStyle }}">Ratios</button>
+        <button onclick="{{ data.goStreaks }}" style="{{ data.streaksTabStyle }}">Streaks</button>
       </div>
 
       <sc-if value="{{ data.loading }}">
@@ -810,7 +811,31 @@
           </sc-for>
         </div>
         <sc-if value="{{ data.hasData }}">
-          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Share of days with at least one occurrence, counted from the first day anything was tracked ({{ data.startLabel }}) through today.</p>
+          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Share of days with at least one occurrence, through today. Counted from {{ data.startLabel }}, or from a metric’s own start date if it began being tracked later.</p>
+        </sc-if>
+      </sc-if>
+
+      <!-- Streaks: days since the last recorded occurrence -->
+      <sc-if value="{{ data.isStreaks }}">
+        <sc-if value="{{ data.noData }}">
+          <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">No data yet — streaks start once something has been recorded on the <strong style="color:var(--fg,#1d1c19);font-weight:600">Track</strong> subtab.</div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ data.streaks }}" as="r">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="min-width:0">
+                <div style="font-size:14.5px;color:var(--fg,#1d1c19);line-height:1.35">{{ r.label }}</div>
+                <div style="font-size:12px;color:var(--muted,#77746c);margin-top:3px">{{ r.detailLabel }}</div>
+              </div>
+              <div style="flex:none;text-align:right">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:500;color:{{ r.valueColor }}">{{ r.value }}</div>
+                <div style="font-size:10.5px;color:var(--faint,#a8a49b);margin-top:1px">{{ r.unitLabel }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ data.hasData }}">
+          <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Days since the last day with at least one recorded occurrence, through today ({{ data.todayLabel }}).</p>
         </sc-if>
       </sc-if>
     </sc-if>
@@ -1531,15 +1556,17 @@ class Component extends DCLogic {
     const vm = {
       loading: !M && !S.metricsError,
       hasError: !!S.metricsError, error: S.metricsError,
-      isTrack: sub === 'track', isGraphs: sub === 'graphs', isRatios: sub === 'ratios',
+      isTrack: sub === 'track', isGraphs: sub === 'graphs', isRatios: sub === 'ratios', isStreaks: sub === 'streaks',
       trackTabStyle: subStyle(sub === 'track'),
       graphsTabStyle: subStyle(sub === 'graphs'),
       ratiosTabStyle: subStyle(sub === 'ratios'),
+      streaksTabStyle: subStyle(sub === 'streaks'),
       goTrack: () => this.setState({ dataTab: 'track' }),
       goGraphs: () => this.setState({ dataTab: 'graphs' }),
       goRatios: () => this.setState({ dataTab: 'ratios' }),
+      goStreaks: () => this.setState({ dataTab: 'streaks' }),
       todayLabel: M ? M.today : '…',
-      rows: [], graphs: [], ratios: [], noData: false, hasData: false, startLabel: '',
+      rows: [], graphs: [], ratios: [], streaks: [], noData: false, hasData: false, startLabel: '',
     };
     if (!M) return vm;
 
@@ -1552,7 +1579,15 @@ class Component extends DCLogic {
     // Ratios use the FULL range since tracking began; graphs cap at the last
     // 180 days so the bars stay readable.
     const days = start ? this.dayRange(start, today) : [];
-    const graphDays = days.slice(-180);
+    // A metric's own start_day (if later than the global epoch) keeps days
+    // before it existed from diluting its graph and ratio.
+    const metricRange = m => {
+      // Clamped to today: a start_day set in the future would otherwise make
+      // an empty range, and an empty denominator renders as "NaN".
+      let s0 = (m.start_day && m.start_day > start) ? m.start_day : start;
+      if (s0 > today) s0 = today;
+      return s0 === start ? days : this.dayRange(s0, today);
+    };
     vm.noData = !start;
     vm.hasData = !!start;
     vm.startLabel = start || '';
@@ -1584,7 +1619,8 @@ class Component extends DCLogic {
     if (start) {
       vm.graphs = M.metrics.map(m => {
         const s = series[m.key] || {};
-        const values = graphDays.map(d => s[d] || 0);
+        const mDays = metricRange(m).slice(-180);
+        const values = mDays.map(d => s[d] || 0);
         const max = Math.max(1, ...values);
         const total = values.reduce((a, v) => a + v, 0);
         const color = m.key === 'gaze_goal_set' ? 'var(--accent,#3d6b52)' : 'var(--missed,#a3573a)';
@@ -1611,18 +1647,55 @@ class Component extends DCLogic {
         return {
           key: m.key, label: m.label, total: String(total), max: String(max),
           bars, dots: values.length > 1 ? dots : [],
-          startLabel: graphDays[0], endLabel: today,
+          startLabel: mDays[0], endLabel: today,
         };
       });
 
-      const denom = days.length;
       vm.ratios = M.metrics.filter(m => m.ratio).map(m => {
         const s = series[m.key] || {};
-        const withData = days.filter(d => (s[d] || 0) > 0).length;
+        const metricDays = metricRange(m);
+        const withData = metricDays.filter(d => (s[d] || 0) > 0).length;
         return {
           key: m.key, label: m.label,
-          value: (withData / denom).toFixed(2),
-          daysLabel: withData + ' of ' + denom + ' tracked days',
+          value: (withData / metricDays.length).toFixed(2),
+          daysLabel: withData + ' of ' + metricDays.length + ' tracked days',
+        };
+      });
+
+      // "How long since this last happened" is a question about the whole
+      // recorded series, so — unlike the ratio denominator — it deliberately
+      // ignores start_day and the graph's 180-day cap. Truncating here would
+      // make a metric whose first taps predate its start_day report "none
+      // recorded" while its own graph is empty only because of the cutoff.
+      const dayNum = d => Math.round(Date.parse(d + 'T00:00:00Z') / 864e5);
+      vm.streaks = M.metrics.filter(m => m.ratio).map(m => {
+        const s = series[m.key] || {};
+        // Latest day with an occurrence, anywhere in the series. Future days
+        // are ignored so a stray one can't yield a negative streak.
+        let lastDay = null;
+        for (const d of Object.keys(s)) {
+          if ((s[d] || 0) > 0 && d <= today && (lastDay === null || d > lastDay)) lastDay = d;
+        }
+        if (lastDay) {
+          const daysSince = dayNum(today) - dayNum(lastDay);
+          return {
+            key: m.key, label: m.label, value: String(daysSince),
+            unitLabel: daysSince === 1 ? 'day' : 'days',
+            valueColor: 'var(--fg,#1d1c19)',
+            detailLabel: daysSince === 0 ? 'last occurred today' : ('last occurred ' + lastDay),
+          };
+        }
+        // Never recorded at all: report the clean run as the tracked span,
+        // counted inclusively so it can't collide with a metric that did
+        // occur on its very first tracked day.
+        const metricDays = metricRange(m);
+        const since = metricDays[0] || today;
+        const cleanDays = dayNum(today) - dayNum(since) + 1;
+        return {
+          key: m.key, label: m.label, value: String(cleanDays),
+          unitLabel: cleanDays === 1 ? 'day' : 'days',
+          valueColor: 'var(--accent,#3d6b52)',
+          detailLabel: 'never recorded — clean since ' + since,
         };
       });
     }

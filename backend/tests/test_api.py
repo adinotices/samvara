@@ -50,9 +50,11 @@ def test_metrics_vocabulary_and_empty_series():
     out = client.get("/v1/metrics", headers=HDR).json()
     keys = [m["key"] for m in out["metrics"]]
     assert keys == ["porn_viewed", "sexual_content_viewed", "masturbation",
-                    "eating_animal_body_parts", "gaze_goal_set", "gaze_goal_broken"]
-    # Ratios apply to the first four only.
-    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:4]
+                    "eating_animal_body_parts", "looking_with_sexual_desire",
+                    "gaze_goal_set", "gaze_goal_broken"]
+    # The ratio-tracked metrics lead the list; the two gaze rows trail it.
+    # Ratios and Streaks render exactly this subset, so keep them contiguous.
+    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:5]
     assert out["series"] == {}
     assert out["today"] == main.metrics_today()
 

@@ -115,6 +115,16 @@ export async function chooseNextRung(id, { days, stake }) {
   return req('POST', '/commitments/' + encodeURIComponent(id) + '/choose-next', { days, stake });
 }
 
+// Only a paused goal (rung complete / auto-charged) can be archived; the
+// server answers 409 otherwise. Unarchiving restores it, still paused.
+export async function archiveCommitment(id) {
+  return req('POST', '/commitments/' + encodeURIComponent(id) + '/archive');
+}
+
+export async function unarchiveCommitment(id) {
+  return req('POST', '/commitments/' + encodeURIComponent(id) + '/unarchive');
+}
+
 // { dryRun } returns a preview { charged, recommit:{days,stake}, dryRun } and
 // moves no money. A live call charges the stake, then recommits (same length,
 // +$1 by default). Explicit { days, stake } override the recommit rung.

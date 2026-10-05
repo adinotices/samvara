@@ -225,3 +225,41 @@ def test_metric_stats_tolerate_a_future_start_day(monkeypatch):
     st = main._metric_stats(main.metrics_today())["porn_viewed"]
     assert st["tracked_days"] == 1
     assert st["start"] == main.metrics_today()
+
+
+# ── archiving paused goals ───────────────────────────────────────────────────
+def test_only_a_paused_goal_can_be_archived():
+    cid = mk("running", 3)
+    r = client.post(f"/v1/commitments/{cid}/archive", headers=HDR)
+    assert r.status_code == 409          # a deadline is running
+    assert not client.get(f"/v1/commitments/{cid}", headers=HDR).json().get("archived_at")
+
+
+def test_archive_and_unarchive_round_trip_leaves_the_rung_untouched():
+    cid = mk("paused", 3)
+    client.post(f"/v1/commitments/{cid}/confirm-clean", headers=HDR)
+    before = client.get(f"/v1/commitments/{cid}", headers=HDR).json()
+
+    r = client.post(f"/v1/commitments/{cid}/archive", headers=HDR)
+    assert r.status_code == 200 and r.json()["archived_at"]
+    # Archived goals can't be advanced until they're brought back.
+    assert client.post(f"/v1/commitments/{cid}/choose-next", headers=HDR,
+                       json={"days": 4, "stake": 5}).status_code == 409
+    assert client.post(f"/v1/commitments/{cid}/confirm-clean", headers=HDR).status_code == 409
+
+    r = client.post(f"/v1/commitments/{cid}/unarchive", headers=HDR)
+    assert r.status_code == 200
+    after = r.json()
+    assert "archived_at" not in after
+    assert after["current_rung"] == before["current_rung"]
+    assert after["history"] == before["history"]
+    assert client.post(f"/v1/commitments/{cid}/choose-next", headers=HDR,
+                       json={"days": 4, "stake": 5}).status_code == 200
+
+
+def test_archive_is_idempotent():
+    cid = mk("paused", 3)
+    client.post(f"/v1/commitments/{cid}/confirm-clean", headers=HDR)
+    first = client.post(f"/v1/commitments/{cid}/archive", headers=HDR).json()["archived_at"]
+    again = client.post(f"/v1/commitments/{cid}/archive", headers=HDR)
+    assert again.status_code == 200 and again.json()["archived_at"] == first

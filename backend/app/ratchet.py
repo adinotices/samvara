@@ -202,6 +202,25 @@ def apply_choose_next(cm: Commitment, days: Any, stake: Any, at_ms: int | None =
     cm["current_rung"] = make_rung(clamp_days(days), clamp_stake(stake), at)
 
 
+def is_paused(cm: Commitment) -> bool:
+    """Waiting on a deliberate human choice, with no deadline running: a clean
+    rung awaiting its next one, or an auto-charged rung awaiting a recommit.
+    Nothing can charge a paused commitment, which is what makes it safe to
+    archive."""
+    r = cm["current_rung"]
+    return bool(r["awaiting_decision"] or r["awaiting_recommit"])
+
+
+def apply_archive(cm: Commitment, at_ms: int | None = None) -> None:
+    """Set a paused commitment aside. Its rung and history are untouched."""
+    cm["archived_at"] = iso_ms(at_ms if at_ms is not None else now_ms())
+
+
+def apply_unarchive(cm: Commitment) -> None:
+    """Bring it back exactly as it was when archived — still paused."""
+    cm.pop("archived_at", None)
+
+
 def is_past_grace(cm: Commitment, grace_ms: int, at_ms: int | None = None) -> bool:
     at = at_ms if at_ms is not None else now_ms()
     r = cm["current_rung"]

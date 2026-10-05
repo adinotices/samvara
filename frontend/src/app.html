@@ -665,6 +665,7 @@
                       <button onclick="{{ card.onDecision }}" title="Customize the next rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
                     </div>
                     <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                    <button onclick="{{ card.onArchive }}" title="Set this goal aside — you can unarchive it later" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Archive</button>
                   </div>
                   <div style="font-size:11.5px;color:var(--faint,#a8a49b);line-height:1.5">Default advances +1 day at the same stake. Tap ⋯ to change the length or stake — nothing advances on its own.</div>
                 </div>
@@ -680,6 +681,7 @@
                       <button onclick="{{ card.onRecommit }}" title="Customize the recommit rung" style="min-height:44px;width:46px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:19px;line-height:1">⋯</button>
                     </div>
                     <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                    <button onclick="{{ card.onArchive }}" title="Set this goal aside — you can unarchive it later" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Archive</button>
                   </div>
                   <div style="font-size:11.5px;color:var(--faint,#a8a49b);line-height:1.5">Default recommits to the same {{ card.recommitDaysLabel }} rung at {{ card.recommitStakeFmt }}. Tap ⋯ to adjust — nothing restarts on its own.</div>
                 </div>
@@ -708,6 +710,7 @@
                 <sc-if value="{{ card.isAwaiting }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onDecisionQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Advance to {{ card.suggestedLabel }}</button><button onclick="{{ card.onDecision }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
                 <sc-if value="{{ card.isRecommit }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onRecommitQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Recommit to {{ card.recommitDaysLabel }}</button><button onclick="{{ card.onRecommit }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
                 <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:9px;background:transparent;border:none;color:var(--muted,#77746c);font-size:13.5px">Details</button>
+                <sc-if value="{{ card.isPaused }}"><button onclick="{{ card.onArchive }}" title="Set this goal aside — you can unarchive it later" style="min-height:44px;padding:0 12px;border-radius:9px;background:transparent;border:none;color:var(--muted,#77746c);font-size:13.5px">Archive</button></sc-if>
               </div>
             </div>
           </sc-if>
@@ -718,6 +721,26 @@
           <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:36px 18px;text-align:center;color:var(--muted,#77746c);font-size:14px;line-height:1.6">No current goals — create a <strong style="color:var(--fg,#1d1c19);font-weight:600">New</strong> goal to get started.</div>
         </sc-if>
       </div>
+
+      <!-- archived goals: collapsed by default, each one can come back -->
+      <sc-if value="{{ hasArchived }}">
+        <div style="margin-top:22px">
+          <button onclick="{{ toggleArchived }}" style="min-height:44px;padding:0 4px;background:transparent;border:none;color:var(--muted,#77746c);font-size:13.5px">{{ archivedToggleLabel }}</button>
+          <sc-if value="{{ showArchived }}">
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+              <sc-for list="{{ archived }}" as="a">
+                <div style="background:var(--surface,#fbfaf7);border:1px dashed var(--line,#e4e0d8);border-radius:14px;padding:12px 14px 12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <div style="min-width:0">
+                    <div style="font-family:'Newsreader',serif;font-size:16px;font-weight:600;color:var(--muted,#77746c);line-height:1.25">{{ a.name }}</div>
+                    <div style="font-size:12px;color:var(--faint,#a8a49b);margin-top:3px">{{ a.detailLabel }}</div>
+                  </div>
+                  <button onclick="{{ a.onUnarchive }}" style="flex:none;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--fg,#1d1c19);font-size:13.5px">Unarchive</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
      </sc-if>
     </sc-if>
 
@@ -1154,7 +1177,7 @@ class Component extends DCLogic {
     // data tab (daily metric tallies)
     dataTab: 'track', metrics: null, metricsError: '',
     // last failed server-touching action (see act()); '' when there is none
-    actionError: '',
+    actionError: '', showArchived: false,
   };
 
   async componentDidMount() {
@@ -1405,6 +1428,8 @@ class Component extends DCLogic {
       stateLabel: { active: 'On a rung', passed: 'Awaiting confirmation', awaiting: 'Rung complete', reset: 'Fresh start', recommit: 'Auto-charged' }[st],
       isRunning: st === 'active' || st === 'reset', isActive: st === 'active', isReset: st === 'reset',
       isPassed: st === 'passed', isAwaiting: st === 'awaiting', isRecommit: st === 'recommit',
+      isPaused: st === 'awaiting' || st === 'recommit',
+      onArchive: this.act(async () => { await this.api.archiveCommitment(cm.id); await this.refresh(); }),
       rungLabel: r.days + '-day rung', stakeFmt: this.money(r.stake),
       baseFmt: cm.base_days + (cm.base_days === 1 ? ' day · ' : ' days · ') + this.money(cm.base_stake),
       cd: st === 'passed' ? this.countdown(graceMs) : this.countdown(dueMs),
@@ -1925,7 +1950,16 @@ class Component extends DCLogic {
 
   renderVals() {
     const S = this.state;
-    const cards = S.commitments.map(cm => this.cardVM(cm));
+    const cards = S.commitments.filter(cm => !cm.archived_at).map(cm => this.cardVM(cm));
+    const archived = S.commitments.filter(cm => cm.archived_at).map(cm => {
+      const r = cm.current_rung;
+      return {
+        id: cm.id, name: cm.name,
+        detailLabel: r.days + '-day rung · ' + this.money(r.charged_amount || r.stake)
+          + ' · archived ' + cm.archived_at.slice(0, 10),
+        onUnarchive: this.act(async () => { await this.api.unarchiveCommitment(cm.id); await this.refresh(); }),
+      };
+    });
     const sel = S.commitments.find(c => c.id === S.selectedId);
     const rootStyle = { ...(S.dark ? this.darkVars() : this.lightVars()), background: 'var(--bg)', color: 'var(--fg)', minHeight: '100vh', fontFamily: "'IBM Plex Sans',system-ui,sans-serif", colorScheme: S.dark ? 'dark' : 'light' };
     return {
@@ -1962,6 +1996,9 @@ class Component extends DCLogic {
         this.loadMetrics();
       },
       hasCards: cards.length > 0, noCards: cards.length === 0, cards,
+      archived, hasArchived: archived.length > 0, showArchived: !!S.showArchived,
+      archivedToggleLabel: (S.showArchived ? 'Hide archived' : 'Show archived') + ' (' + archived.length + ')',
+      toggleArchived: () => this.setState({ showArchived: !S.showArchived }),
       totalChargedFmt: this.money(S.settings.totalCharged), recipient: S.settings.recipient,
       hasPendingPenalty: !!(S.metrics && S.metrics.pendingPenalty && S.metrics.pendingPenalty.amount > 0),
       pendingPenaltyFmt: this.money(S.metrics && S.metrics.pendingPenalty && S.metrics.pendingPenalty.amount),

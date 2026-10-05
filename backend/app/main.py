@@ -73,6 +73,14 @@ def _require(cid: str) -> dict[str, Any]:
     return cm
 
 
+def _require_unarchived(cid: str) -> dict[str, Any]:
+    cm = _require(cid)
+    if cm.get("archived_at"):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "This goal is archived; unarchive it first.")
+    return cm
+
+
 def _note(cm: dict[str, Any], outcome: str) -> str:
     r = cm["current_rung"]
     return f"Samvara: {outcome} on {cm['name']!r} ({r['days']}-day rung)"
@@ -196,7 +204,7 @@ async def create_commitment(body: CreateBody) -> dict[str, Any]:
 @app.post("/v1/commitments/{cid}/confirm-clean", dependencies=[Depends(require_auth)])
 async def confirm_clean(cid: str) -> dict[str, Any]:
     with store.lock:
-        cm = _require(cid)
+        cm = _require_unarchived(cid)
         ratchet.apply_confirm_clean(cm)
         store.update_commitment(cm)
     return cm
@@ -205,9 +213,38 @@ async def confirm_clean(cid: str) -> dict[str, Any]:
 @app.post("/v1/commitments/{cid}/choose-next", dependencies=[Depends(require_auth)])
 async def choose_next(cid: str, body: ChooseNextBody) -> dict[str, Any]:
     with store.lock:
-        cm = _require(cid)
+        cm = _require_unarchived(cid)
         ratchet.apply_choose_next(cm, body.days, body.stake)
         store.update_commitment(cm)
+    return cm
+
+
+# Archiving is only offered while a goal is paused (ratchet.is_paused): no
+# deadline is running, so nothing — not /tick, not auto-miss — can charge it,
+# and setting it aside can't strand money in flight. Unarchiving restores it
+# untouched, still paused, so resuming is the same deliberate recommit/advance.
+@app.post("/v1/commitments/{cid}/archive", dependencies=[Depends(require_auth)])
+async def archive_commitment(cid: str) -> dict[str, Any]:
+    async with _charge_lock:
+        with store.lock:
+            cm = _require(cid)
+            if not cm.get("archived_at"):
+                if not ratchet.is_paused(cm):
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "Only a paused goal (rung complete or auto-charged) can be archived.")
+                ratchet.apply_archive(cm)
+                store.update_commitment(cm)
+    return cm
+
+
+@app.post("/v1/commitments/{cid}/unarchive", dependencies=[Depends(require_auth)])
+async def unarchive_commitment(cid: str) -> dict[str, Any]:
+    with store.lock:
+        cm = _require(cid)
+        if cm.get("archived_at"):
+            ratchet.apply_unarchive(cm)
+            store.update_commitment(cm)
     return cm
 
 

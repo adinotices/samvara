@@ -49,12 +49,13 @@ def mk(name: str, days: int) -> str:
 def test_metrics_vocabulary_and_empty_series():
     out = client.get("/v1/metrics", headers=HDR).json()
     keys = [m["key"] for m in out["metrics"]]
+    # Archived metrics (eating_animal_body_parts, looking_with_sexual_desire)
+    # are left out of the payload entirely.
     assert keys == ["porn_viewed", "sexual_content_viewed", "masturbation",
-                    "eating_animal_body_parts", "looking_with_sexual_desire",
                     "gaze_goal_set", "gaze_goal_broken"]
     # The ratio-tracked metrics lead the list; the two gaze rows trail it.
     # Ratios and Streaks render exactly this subset, so keep them contiguous.
-    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:5]
+    assert [m["key"] for m in out["metrics"] if m["ratio"]] == keys[:3]
     assert out["series"] == {}
     assert out["today"] == main.metrics_today()
 
@@ -70,6 +71,47 @@ def test_bump_increments_today_and_decrement_floors_at_zero():
     client.post("/v1/metrics/masturbation/bump", headers=HDR, json={"delta": -1})
     r = client.post("/v1/metrics/masturbation/bump", headers=HDR, json={"delta": -1})
     assert r.json()["series"]["masturbation"][today] == 0
+
+
+def test_archived_metric_is_hidden_and_unbumpable_but_keeps_its_history():
+    today = main.metrics_today()
+    with store.lock, store._conn:
+        store._conn.execute(
+            "INSERT INTO metric_days (metric, day, count) VALUES (?, ?, ?)",
+            ("eating_animal_body_parts", today, 1))
+    r = client.post("/v1/metrics/eating_animal_body_parts/bump", headers=HDR, json={"delta": 1})
+    assert r.status_code == 409
+    out = client.get("/v1/metrics", headers=HDR).json()
+    assert "eating_animal_body_parts" not in out["series"]
+    assert "eating_animal_body_parts" not in out["stats"]
+    assert store.metric_count("eating_animal_body_parts", today) == 1
+
+
+def test_clean_runs_cover_gaps_between_occurrences():
+    runs = main._clean_runs(["2026-07-05", "2026-07-06", "2026-07-10"],
+                            "2026-07-01", "2026-07-15")
+    assert runs == [
+        {"start": "2026-07-01", "end": "2026-07-04", "days": 4, "current": False},
+        # 07-05 → 07-06 back to back: no run between them.
+        {"start": "2026-07-07", "end": "2026-07-09", "days": 3, "current": False},
+        {"start": "2026-07-11", "end": "2026-07-15", "days": 5, "current": True},
+    ]
+
+
+def test_clean_runs_current_is_zero_when_it_happened_today_and_full_span_when_never():
+    assert main._clean_runs(["2026-07-15"], "2026-07-15", "2026-07-15") == [
+        {"start": "2026-07-16", "end": "2026-07-15", "days": 0, "current": True}]
+    assert main._clean_runs([], "2026-07-01", "2026-07-03") == [
+        {"start": "2026-07-01", "end": "2026-07-03", "days": 3, "current": True}]
+
+
+def test_metrics_payload_carries_runs_for_ratio_metrics_only():
+    client.post("/v1/metrics/masturbation/bump", headers=HDR, json={"delta": 1})
+    stats = client.get("/v1/metrics", headers=HDR).json()["stats"]
+    assert stats["masturbation"]["runs"][-1] == {
+        "start": stats["masturbation"]["runs"][-1]["start"],
+        "end": main.metrics_today(), "days": 0, "current": True}
+    assert "runs" not in stats["gaze_goal_set"]
 
 
 def test_bump_rejects_unknown_metric_and_bad_delta():
@@ -128,9 +170,12 @@ def test_commitments_listed_closest_deadline_first():
 
 
 # ── payload aggregates (keep the client off lifetime day-by-day history) ─────
-def test_metrics_stats_carry_ratio_and_last_day():
+def test_metrics_stats_carry_ratio_and_last_day(monkeypatch):
     """The ratio's numerator/denominator and the streak's anchor are computed
     server-side, so the series payload can stay bounded to the graph window."""
+    monkeypatch.setattr(main, "METRICS", main.METRICS + [
+        {"key": "late_starter", "label": "Late starter", "ratio": True, "start_day": "2026-08-08"},
+    ])
     today = main.metrics_today()
     old = "2020-01-01"          # far outside any graph window
     with store.lock, store._conn:
@@ -145,9 +190,9 @@ def test_metrics_stats_carry_ratio_and_last_day():
     assert st["ratio_days"] == 0          # before tracking began: not counted
     assert st["tracked_days"] >= 1
     # A metric with its own start_day gets its own, later denominator.
-    eating = out["stats"]["eating_animal_body_parts"]
-    assert eating["start"] == "2026-08-08"
-    assert eating["tracked_days"] < st["tracked_days"]
+    late = out["stats"]["late_starter"]
+    assert late["start"] == "2026-08-08"
+    assert late["tracked_days"] < st["tracked_days"]
     assert out["trackingStart"] == main.TRACKING_START_DAY
     assert out["graphWindowDays"] == main.GRAPH_WINDOW_DAYS
 

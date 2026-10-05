@@ -331,17 +331,23 @@ async def auto_miss(cid: str) -> dict[str, Any]:
 # renders whatever this returns, so adding a metric here is the whole change.
 # Optional `start_day` overrides the global tracking epoch for a metric's own
 # ratio denominator, so a metric added after 2026-07-03 isn't diluted by days
-# before it existed.
+# before it existed. `archived: True` retires a metric: it drops out of the
+# payload (so off every subtab) and can't be bumped, but its stored history is
+# kept — delete the flag to bring it back exactly as it was.
 METRICS: list[dict[str, Any]] = [
     {"key": "porn_viewed", "label": "Porn viewed", "ratio": True},
     {"key": "sexual_content_viewed", "label": "Non-porn sexual content viewed", "ratio": True},
     {"key": "masturbation", "label": "Masturbations", "ratio": True},
-    {"key": "eating_animal_body_parts", "label": "Eating Animal Body Parts", "ratio": True, "start_day": "2026-08-08"},
-    {"key": "looking_with_sexual_desire", "label": "Looking with Sexual Desire", "ratio": True, "start_day": "2026-08-19"},
+    {"key": "eating_animal_body_parts", "label": "Eating Animal Body Parts", "ratio": True, "start_day": "2026-08-08", "archived": True},
+    {"key": "looking_with_sexual_desire", "label": "Looking with Sexual Desire", "ratio": True, "start_day": "2026-08-19", "archived": True},
     {"key": "gaze_goal_set", "label": "Goal set: not looking at women with sexual desire", "ratio": False},
     {"key": "gaze_goal_broken", "label": "That goal broken", "ratio": False},
 ]
 _METRIC_KEYS = {m["key"] for m in METRICS}
+
+
+def _active_metrics() -> list[dict[str, Any]]:
+    return [m for m in METRICS if not m.get("archived")]
 
 # The day tallying began. Authoritative here and published in the metrics
 # payload — the frontend used to carry its own copy of this date, which meant
@@ -425,7 +431,7 @@ def _metric_stats(today: str) -> dict[str, dict[str, Any]]:
     last_days = store.metric_last_days()
     today_d = dt.date.fromisoformat(today)
     out: dict[str, dict[str, Any]] = {}
-    for m in METRICS:
+    for m in _active_metrics():
         start = m.get("start_day") or TRACKING_START_DAY
         if start > today:          # a start_day set in the future
             start = today
@@ -436,7 +442,38 @@ def _metric_stats(today: str) -> dict[str, dict[str, Any]]:
             "ratio_days": store.metric_days_with_data(m["key"], start),
             "last_day": last_days.get(m["key"]),
         }
+        if m["ratio"]:
+            out[m["key"]]["runs"] = _clean_runs(store.metric_occurrence_days(m["key"], start), start, today)
     return out
+
+
+def _clean_runs(occurrences: list[str], start: str, today: str) -> list[dict[str, Any]]:
+    """Every clean run on record, oldest first: {start, end, days, current}.
+
+    A run is the stretch of zero-count days between occurrences (or between
+    the metric's start and its first occurrence). The last run is the one in
+    progress and counts today as clean, matching the Streaks subtab's "days
+    since" — so it is 0 when the metric occurred today. Back-to-back
+    occurrence days leave no completed run between them, so those are omitted.
+    """
+    def day(d: str) -> dt.date:
+        return dt.date.fromisoformat(d)
+
+    runs: list[dict[str, Any]] = []
+    prev: dt.date | None = None          # last occurrence seen so far
+    for occ in occurrences:
+        o = day(occ)
+        first = (prev + dt.timedelta(days=1)) if prev else day(start)
+        if o > first:
+            runs.append({"start": first.isoformat(),
+                         "end": (o - dt.timedelta(days=1)).isoformat(),
+                         "days": (o - first).days, "current": False})
+        prev = o
+    first = (prev + dt.timedelta(days=1)) if prev else day(start)
+    t = day(today)
+    runs.append({"start": first.isoformat(), "end": today,
+                 "days": max(0, (t - first).days + 1), "current": True})
+    return runs
 
 
 def _metrics_payload() -> dict[str, Any]:
@@ -449,9 +486,11 @@ def _metrics_payload() -> dict[str, Any]:
     count = store.metric_count(PENALTY_METRIC, today)
     penalty_row = store.get_penalty_day(today)
     charged = penalty_row["charged_count"] if penalty_row else 0
+    active = _active_metrics()
+    active_keys = {m["key"] for m in active}
     return {
-        "metrics": METRICS,
-        "series": series,
+        "metrics": active,
+        "series": {k: v for k, v in series.items() if k in active_keys},
         "stats": _metric_stats(today),
         "today": today,
         "trackingStart": TRACKING_START_DAY,
@@ -469,6 +508,8 @@ async def get_metrics() -> dict[str, Any]:
 async def bump_metric(key: str, body: BumpBody) -> dict[str, Any]:
     if key not in _METRIC_KEYS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No metric {key!r}.")
+    if key not in {m["key"] for m in _active_metrics()}:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Metric {key!r} is archived.")
     if body.delta not in (1, -1):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "delta must be 1 or -1.")
     today = metrics_today()

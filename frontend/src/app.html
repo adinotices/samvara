@@ -731,6 +731,7 @@
         <button onclick="{{ data.goGraphs }}" style="{{ data.graphsTabStyle }}">Graphs</button>
         <button onclick="{{ data.goRatios }}" style="{{ data.ratiosTabStyle }}">Ratios</button>
         <button onclick="{{ data.goStreaks }}" style="{{ data.streaksTabStyle }}">Streaks</button>
+        <button onclick="{{ data.goTrends }}" style="{{ data.trendsTabStyle }}">Streak Trends</button>
       </div>
 
       <sc-if value="{{ data.loading }}">
@@ -837,6 +838,48 @@
         <sc-if value="{{ data.hasData }}">
           <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Days since the last day with at least one recorded occurrence, through today ({{ data.todayLabel }}).</p>
         </sc-if>
+      </sc-if>
+
+      <!-- Streak Trends: every clean run on record, oldest first -->
+      <sc-if value="{{ data.isTrends }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <sc-for list="{{ data.trends }}" as="t">
+            <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:14px;box-shadow:0 1px 2px var(--shadow,rgba(35,32,26,.08));padding:16px">
+              <div style="font-size:14.5px;color:var(--fg,#1d1c19);line-height:1.35;margin-bottom:12px">{{ t.label }}</div>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px">
+                <div style="min-width:0">
+                  <div style="font-size:11px;color:var(--muted,#77746c)">Longest</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;color:var(--accent,#3d6b52);margin-top:2px">{{ t.longest }}</div>
+                  <div style="font-size:10.5px;color:var(--faint,#a8a49b);margin-top:1px;line-height:1.35">{{ t.longestLabel }}</div>
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:11px;color:var(--muted,#77746c)">Current</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;color:var(--fg,#1d1c19);margin-top:2px">{{ t.current }}</div>
+                  <div style="font-size:10.5px;color:var(--faint,#a8a49b);margin-top:1px;line-height:1.35">{{ t.currentLabel }}</div>
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:11px;color:var(--muted,#77746c)">Average</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;color:var(--fg,#1d1c19);margin-top:2px">{{ t.average }}</div>
+                  <div style="font-size:10.5px;color:var(--faint,#a8a49b);margin-top:1px;line-height:1.35">{{ t.averageLabel }}</div>
+                </div>
+              </div>
+              <div style="position:relative;height:96px;border-bottom:1px solid var(--line,#e4e0d8)">
+                <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px">
+                  <sc-for list="{{ t.bars }}" as="b">
+                    <div title="{{ b.title }}" style="{{ b.style }}"></div>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ t.dots }}" as="d">
+                  <div style="{{ d.style }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint,#a8a49b);margin-top:6px;font-family:'IBM Plex Mono',monospace">
+                <span>{{ t.startLabel }}</span><span>{{ t.endLabel }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin:14px 2px 0;color:var(--faint,#a8a49b);font-size:11.5px;line-height:1.5">Each bar is one clean run — consecutive days with nothing recorded — oldest on the left. The longest on record is drawn at full strength; the dashed outline is the run in progress. Dots trace the average of the last three runs.</p>
       </sc-if>
     </sc-if>
 
@@ -1552,21 +1595,25 @@ class Component extends DCLogic {
       background: active ? 'var(--surface,#fbfaf7)' : 'transparent',
       color: active ? 'var(--fg,#1d1c19)' : 'var(--muted,#77746c)',
       boxShadow: active ? '0 1px 2px var(--shadow,rgba(35,32,26,.08))' : 'none',
+      lineHeight: '1.15', padding: '4px 2px',
     });
     const vm = {
       loading: !M && !S.metricsError,
       hasError: !!S.metricsError, error: S.metricsError,
       isTrack: sub === 'track', isGraphs: sub === 'graphs', isRatios: sub === 'ratios', isStreaks: sub === 'streaks',
+      isTrends: sub === 'trends',
       trackTabStyle: subStyle(sub === 'track'),
       graphsTabStyle: subStyle(sub === 'graphs'),
       ratiosTabStyle: subStyle(sub === 'ratios'),
       streaksTabStyle: subStyle(sub === 'streaks'),
+      trendsTabStyle: subStyle(sub === 'trends'),
       goTrack: () => this.setState({ dataTab: 'track' }),
       goGraphs: () => this.setState({ dataTab: 'graphs' }),
       goRatios: () => this.setState({ dataTab: 'ratios' }),
       goStreaks: () => this.setState({ dataTab: 'streaks' }),
+      goTrends: () => this.setState({ dataTab: 'trends' }),
       todayLabel: M ? M.today : '…',
-      rows: [], graphs: [], ratios: [], streaks: [], noData: false, hasData: false, startLabel: '',
+      rows: [], graphs: [], ratios: [], streaks: [], trends: [], noData: false, hasData: false, startLabel: '',
     };
     if (!M) return vm;
 
@@ -1582,6 +1629,7 @@ class Component extends DCLogic {
     vm.graphs = D.graphs;
     vm.ratios = D.ratios;
     vm.streaks = D.streaks;
+    vm.trends = D.trends;
     return vm;
   }
 
@@ -1616,7 +1664,7 @@ class Component extends DCLogic {
       k => Object.keys(series[k]).some(d => series[k][d] > 0));
     const out = {
       noData: !anyData, hasData: anyData, startLabel: trackingStart,
-      rows: [], graphs: [], ratios: [], streaks: [],
+      rows: [], graphs: [], ratios: [], streaks: [], trends: [],
     };
 
     const pendingAmount = (M.pendingPenalty && M.pendingPenalty.amount) || 0;
@@ -1727,6 +1775,63 @@ class Component extends DCLogic {
         unitLabel: cleanDays === 1 ? 'day' : 'days',
         valueColor: 'var(--accent,#3d6b52)',
         detailLabel: 'never recorded \u2014 clean since ' + since,
+      };
+    });
+
+    // Streak Trends: the server rebuilds every clean run over full history
+    // (stats.runs, oldest first, last one in progress), so the record and the
+    // trend aren't cut off at the graph window.
+    const daysWord = n => n === 1 ? 'day' : 'days';
+    out.trends = M.metrics.filter(m => m.ratio).map(m => {
+      const runs = statFor(m).runs || [];
+      const cur = runs.length && runs[runs.length - 1].current ? runs[runs.length - 1] : null;
+      const done = runs.filter(r => !r.current);
+      // A current run of 0 (it happened today) isn't a run yet — no bar.
+      const shown = runs.filter(r => r.days > 0);
+      let best = null;
+      for (const r of shown) if (!best || r.days >= best.days) best = r;   // ties: most recent
+      const avg = done.length ? done.reduce((a, r) => a + r.days, 0) / done.length : 0;
+      const max = Math.max(1, ...shown.map(r => r.days));
+      const bars = shown.map(r => {
+        const isBest = r === best;
+        return {
+          title: r.start + ' \u2192 ' + r.end + ': ' + r.days + ' ' + daysWord(r.days) + (r.current ? ' (ongoing)' : ''),
+          style: {
+            flex: '1', minWidth: '0', maxWidth: '28px', boxSizing: 'border-box', borderRadius: '2px 2px 0 0',
+            height: Math.round(6 + (r.days / max) * 84) + 'px',
+            background: r.current ? 'transparent' : 'var(--accent,#3d6b52)',
+            opacity: isBest || r.current ? '1' : '.4',
+            border: r.current ? '1.5px dashed var(--accent,#3d6b52)' : 'none',
+          },
+        };
+      });
+      // Average of the last three runs at each bar — is the trend lengthening?
+      // Bars cap at 28px wide, so the dots sit on the bars' own centers.
+      const dots = shown.length > 1 ? shown.map((r, i) => {
+        const w = shown.slice(Math.max(0, i - 2), i + 1);
+        const a = w.reduce((s2, x) => s2 + x.days, 0) / w.length;
+        return {
+          style: {
+            position: 'absolute', width: '5px', height: '5px', borderRadius: '50%',
+            background: 'var(--lapse,#9c7d33)', border: '1px solid var(--surface,#fbfaf7)',
+            left: 'calc(' + (i + 0.5) + ' * min(100% / ' + shown.length + ', 30px) - 3px)',
+            bottom: Math.round((a / max) * 90) + 'px',
+          },
+        };
+      }) : [];
+      return {
+        key: m.key, label: m.label,
+        longest: best ? String(best.days) : '0',
+        longestLabel: best
+          ? (best.current ? 'ongoing \u00b7 since ' + best.start : best.start + ' \u2192 ' + best.end)
+          : 'none yet',
+        current: cur ? String(cur.days) : '0',
+        currentLabel: cur ? (cur.days === 0 ? 'happened today' : daysWord(cur.days)) : '',
+        average: done.length ? (Math.round(avg * 10) / 10).toString() : '\u2014',
+        averageLabel: done.length ? done.length + ' finished ' + (done.length === 1 ? 'run' : 'runs') : 'no finished runs',
+        bars, dots,
+        startLabel: shown.length ? shown[0].start : (statFor(m).start || trackingStart),
+        endLabel: today,
       };
     });
     return out;

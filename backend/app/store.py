@@ -215,6 +215,21 @@ class Store:
             ).fetchone()
         return row[0] if row else 0
 
+    def metric_occurrence_days(self, metric: str, since: str) -> list[str]:
+        """Every day on/after `since` with a non-zero count, oldest first.
+
+        Unbounded by the graph window on purpose: the Streak Trends subtab
+        rebuilds every clean run on record, and a run that started before the
+        window is still a run.
+        """
+        with self.lock:
+            rows = self._conn.execute(
+                "SELECT day FROM metric_days"
+                " WHERE metric = ? AND day >= ? AND count > 0 ORDER BY day ASC",
+                (metric, since),
+            ).fetchall()
+        return [r[0] for r in rows]
+
     def metric_count(self, metric: str, day: str) -> int:
         with self.lock:
             row = self._conn.execute(

@@ -731,7 +731,7 @@
         <button onclick="{{ data.goGraphs }}" style="{{ data.graphsTabStyle }}">Graphs</button>
         <button onclick="{{ data.goRatios }}" style="{{ data.ratiosTabStyle }}">Ratios</button>
         <button onclick="{{ data.goStreaks }}" style="{{ data.streaksTabStyle }}">Streaks</button>
-        <button onclick="{{ data.goTrends }}" style="{{ data.trendsTabStyle }}">Streak Trends</button>
+        <button onclick="{{ data.goTrends }}" style="{{ data.trendsTabStyle }}">Trends</button>
       </div>
 
       <sc-if value="{{ data.loading }}">
@@ -840,7 +840,7 @@
         </sc-if>
       </sc-if>
 
-      <!-- Streak Trends: every clean run on record, oldest first -->
+      <!-- Trends: every clean run on record, oldest first -->
       <sc-if value="{{ data.isTrends }}">
         <div style="display:flex;flex-direction:column;gap:16px">
           <sc-for list="{{ data.trends }}" as="t">

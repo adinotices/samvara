@@ -141,6 +141,7 @@ scripts/
   tick.yml           cron: POST /v1/tick
   backend-tests.yml  the money-path test suite on every push — red means
                      do not deploy the backend
+  fly-deploy.yml     backend changes on main → tests → deploy to Fly
 
 deploy/
   digitalocean/    docker-compose + notes
@@ -204,6 +205,14 @@ won't allow the fetch calls.)
    configure the custom domain in Pages settings + DNS.
 4. Push to `main`. `pages.yml` generates `config.js` from the secrets, builds
    `dist/`, and publishes.
+
+### Backend → Fly (automatic)
+
+`fly-deploy.yml` deploys the API on every push to `main` that touches
+`backend/` or `deploy/fly/`, after the test suite passes on that commit. It
+needs one repository secret, `FLY_API_TOKEN`, a deploy-scoped token from
+`fly tokens create deploy -a samvara-api`. Run it by hand from the Actions tab
+(**Run workflow**) to redeploy without a code change.
 
 ### Backend → any Docker host
 

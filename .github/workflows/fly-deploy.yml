@@ -1,0 +1,67 @@
+name: Deploy backend to Fly
+
+# Ships the API to Fly on every push to main that touches it, but only after
+# the money-path test suite passes on that exact commit. The Fly config in
+# deploy/fly/fly.toml is ARMED (BEEMINDER_DRYRUN=false), so a green run here
+# means the new code is charging real money.
+#
+# Required repository secret (Settings → Secrets and variables → Actions):
+#   FLY_API_TOKEN   a deploy-scoped token:  fly tokens create deploy -a samvara-api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "deploy/fly/**"
+      - ".github/workflows/fly-deploy.yml"
+  workflow_dispatch:
+
+# Never run two deploys at once; let an in-progress one finish rather than
+# cutting it off mid-rollout.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest
+
+      - name: Run tests
+        run: cd backend && python -m pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for the deploy token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN repository secret is not set; nothing deployed."
+            echo "Create one with: fly tokens create deploy -a samvara-api"
+            exit 1
+          fi
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # Same command as the README; fly.toml resolves its Dockerfile relative
+      # to itself, and ./backend is the build context. --remote-only builds on
+      # Fly's builder, so the runner needs no Docker.
+      - name: flyctl deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy ./backend -c deploy/fly/fly.toml --remote-only

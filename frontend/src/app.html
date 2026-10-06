@@ -584,10 +584,11 @@
                 <div style="min-width:0">
                   <div style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.01em;line-height:1.15">{{ card.name }}</div>
                   <div style="font-size:15px;color:var(--muted,#77746c);margin-top:5px">{{ card.rungLabel }} · <span style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--fg,#1d1c19)">{{ card.stakeFmt }}</span> at stake</div>
+                  <sc-if value="{{ card.coachVerifies }}"><div style="font-size:12px;color:var(--faint,#a8a49b);margin-top:3px">Verified by your coach</div></sc-if>
                 </div>
                 <sc-if value="{{ card.isActive }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--accent,#3d6b52) 14%,transparent);color:var(--accent,#3d6b52)">On a rung</span></sc-if>
                 <sc-if value="{{ card.isReset }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:var(--surface2,#eceae4);color:var(--muted,#77746c)">Fresh start</span></sc-if>
-                <sc-if value="{{ card.isPassed }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent);color:var(--missed,#a3573a)">Awaiting confirmation</span></sc-if>
+                <sc-if value="{{ card.isPassed }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent);color:var(--missed,#a3573a)">{{ card.passedBadge }}</span></sc-if>
                 <sc-if value="{{ card.isRecommit }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--missed,#a3573a) 14%,transparent);color:var(--missed,#a3573a)">Auto-charged</span></sc-if>
                 <sc-if value="{{ card.isAwaiting }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--accent,#3d6b52) 14%,transparent);color:var(--accent,#3d6b52)">Rung complete</span></sc-if>
               </div>
@@ -623,8 +624,22 @@
                 </div>
               </sc-if>
 
+              <!-- deadline passed, coach-verified: the coach rules; no timer -->
+              <sc-if value="{{ card.isPassedCoach }}">
+                <div style="display:flex;flex-direction:column;gap:15px">
+                  <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19);background:var(--surface2,#eceae4);border-radius:10px;padding:12px 14px">Deadline reached. Your coach decides whether this rung passed — nothing is charged until they do.</div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                    <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+                      <button onclick="{{ card.onMissQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px">I didn't make it</button>
+                      <button onclick="{{ card.onMiss }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+                    </div>
+                    <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:10px;background:transparent;border:none;color:var(--muted,#77746c);font-size:14px">Details</button>
+                  </div>
+                </div>
+              </sc-if>
+
               <!-- deadline passed — 24h confirmation window -->
-              <sc-if value="{{ card.isPassed }}">
+              <sc-if value="{{ card.isPassedSelf }}">
                 <div style="display:flex;flex-direction:column;gap:15px">
                   <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19);background:color-mix(in srgb,var(--missed,#a3573a) 9%,transparent);border:1px solid color-mix(in srgb,var(--missed,#a3573a) 28%,transparent);border-radius:10px;padding:12px 14px">Deadline reached. You have <strong>24 hours</strong> to confirm. If you don't respond in time, it's assumed a miss — charged <span style="font-family:'IBM Plex Mono',monospace">{{ card.stakeFmt }}</span>, then parked for you to recommit.</div>
                   <div>
@@ -698,7 +713,8 @@
               </div>
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
                 <sc-if value="{{ card.isRunning }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--fg,#1d1c19);font-variant-numeric:tabular-nums">{{ card.cd.d }}d {{ card.cd.h }}:{{ card.cd.m }} left</span></sc-if>
-                <sc-if value="{{ card.isPassed }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--missed,#a3573a);font-variant-numeric:tabular-nums">{{ card.cd.h }}h {{ card.cd.m }}m to confirm</span></sc-if>
+                <sc-if value="{{ card.isPassedSelf }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--missed,#a3573a);font-variant-numeric:tabular-nums">{{ card.cd.h }}h {{ card.cd.m }}m to confirm</span></sc-if>
+                <sc-if value="{{ card.isPassedCoach }}"><span style="font-size:14px;color:var(--muted,#77746c);font-weight:500">Awaiting your coach</span></sc-if>
                 <sc-if value="{{ card.isAwaiting }}"><span style="font-size:14px;color:var(--accent,#3d6b52);font-weight:500">Rung complete</span></sc-if>
                 <sc-if value="{{ card.isRecommit }}"><span style="font-size:14px;color:var(--missed,#a3573a);font-weight:500">Auto-charged {{ card.chargedFmt }}</span></sc-if>
                 <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted,#77746c)">{{ card.stakeFmt }}</span>
@@ -706,7 +722,7 @@
               <div style="height:3px;border-radius:999px;background:var(--surface2,#eceae4);overflow:hidden"><div style="height:100%;width:{{ card.progressPct }}%;background:var(--accent,#3d6b52)"></div></div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <sc-if value="{{ card.isRunning }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))"><button onclick="{{ card.onSlipQuick }}" style="min-height:44px;padding:0 14px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:13.5px">I slipped</button><button onclick="{{ card.onSlip }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:18px;line-height:1">⋯</button></div></sc-if>
-                <sc-if value="{{ card.isPassed }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onConfirmCleanQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Stayed clean</button><button onclick="{{ card.onConfirmClean }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
+                <sc-if value="{{ card.isPassedSelf }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onConfirmCleanQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Stayed clean</button><button onclick="{{ card.onConfirmClean }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
                 <sc-if value="{{ card.isAwaiting }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onDecisionQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Advance to {{ card.suggestedLabel }}</button><button onclick="{{ card.onDecision }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
                 <sc-if value="{{ card.isRecommit }}"><div style="display:inline-flex;align-items:stretch;border-radius:9px;overflow:hidden"><button onclick="{{ card.onRecommitQuick }}" style="min-height:44px;padding:0 14px;border:none;background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:13.5px;font-weight:600">Recommit to {{ card.recommitDaysLabel }}</button><button onclick="{{ card.onRecommit }}" title="Customize" style="min-height:44px;width:40px;padding:0;border:none;border-left:1px solid color-mix(in srgb,#000 20%,var(--accent,#3d6b52));background:var(--accent,#3d6b52);color:var(--accent-fg,#fff);font-size:18px;line-height:1">⋯</button></div></sc-if>
                 <button onclick="{{ card.onDetail }}" style="min-height:44px;padding:0 12px;border-radius:9px;background:transparent;border:none;color:var(--muted,#77746c);font-size:13.5px">Details</button>
@@ -910,7 +926,13 @@
     <sc-if value="{{ isDetail }}">
       <button onclick="{{ goDashboard }}" style="background:transparent;border:none;color:var(--muted,#77746c);font-size:13px;padding:6px 0;margin-bottom:8px">← All commitments</button>
       <h1 style="font-family:'Newsreader',serif;font-size:26px;font-weight:600;margin:2px 0 3px;color:var(--fg,#1d1c19);letter-spacing:-.015em">{{ detail.name }}</h1>
-      <p style="margin:0 0 20px;color:var(--muted,#77746c);font-size:12.5px">Base {{ detail.baseFmt }}</p>
+      <p style="margin:0 0 12px;color:var(--muted,#77746c);font-size:12.5px">Base {{ detail.baseFmt }}</p>
+
+      <!-- coach sharing: a shared goal is passed or failed by the coach -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:12px;padding:10px 12px 10px 14px;margin-bottom:16px">
+        <div style="min-width:0;font-size:13px;line-height:1.45;color:var(--muted,#77746c)">{{ detail.coachLine }}</div>
+        <sc-if value="{{ detail.canToggleCoach }}"><button onclick="{{ detail.onToggleCoach }}" style="flex:none;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line,#e4e0d8);background:transparent;color:var(--fg,#1d1c19);font-size:13.5px">{{ detail.coachToggleLabel }}</button></sc-if>
+      </div>
 
       <!-- current status -->
       <div style="background:var(--surface,#fbfaf7);border:1px solid var(--line,#e4e0d8);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:15px;margin-bottom:16px">
@@ -930,7 +952,14 @@
             <button onclick="{{ detail.onSlip }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
           </div>
         </sc-if>
-        <sc-if value="{{ detail.isPassed }}">
+        <sc-if value="{{ detail.isPassedCoach }}">
+          <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19)">Deadline passed on the {{ detail.rungLabel }}. Your coach decides whether it passed — nothing is charged until they do.</div>
+          <div style="display:inline-flex;align-self:flex-start;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--missed,#a3573a) 45%,var(--line,#e4e0d8))">
+            <button onclick="{{ detail.onMissQuick }}" style="min-height:44px;padding:0 16px;border:none;background:transparent;color:var(--missed,#a3573a);font-size:14px">I didn't make it</button>
+            <button onclick="{{ detail.onMiss }}" title="Customize the charge &amp; recommit" style="min-height:44px;width:44px;padding:0;border:none;border-left:1px solid color-mix(in srgb,var(--missed,#a3573a) 40%,var(--line,#e4e0d8));background:transparent;color:var(--missed,#a3573a);font-size:19px;line-height:1">⋯</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ detail.isPassedSelf }}">
           <div style="font-size:13px;line-height:1.55;color:var(--fg,#1d1c19)">Deadline passed on the {{ detail.rungLabel }} — <span style="font-family:'IBM Plex Mono',monospace">{{ detail.cd.h }}h {{ detail.cd.m }}m</span> left to confirm. If the window closes first, it's assumed a miss ({{ detail.stakeFmt }}) and parked for you to recommit.</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <div style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden">
@@ -1222,6 +1251,7 @@ class Component extends DCLogic {
     const due = this.state.commitments.filter(cm => {
       const r = cm.current_rung;
       if (r.completed || r.awaiting_decision || r.awaiting_recommit || r.auto_missed) return false;
+      if (cm.coach) return false;  // coach-verified: waits on the coach, never auto-charges
       if (this._amTried[cm.id] && now - this._amTried[cm.id] < 60000) return false;
       return now > Date.parse(r.due) + this.api.GRACE_MS;
     });
@@ -1425,9 +1455,14 @@ class Component extends DCLogic {
     };
     return {
       id: cm.id, name: cm.name,
-      stateLabel: { active: 'On a rung', passed: 'Awaiting confirmation', awaiting: 'Rung complete', reset: 'Fresh start', recommit: 'Auto-charged' }[st],
+      stateLabel: { active: 'On a rung', passed: cm.coach ? 'Awaiting your coach' : 'Awaiting confirmation', awaiting: 'Rung complete', reset: 'Fresh start', recommit: 'Auto-charged' }[st],
       isRunning: st === 'active' || st === 'reset', isActive: st === 'active', isReset: st === 'reset',
       isPassed: st === 'passed', isAwaiting: st === 'awaiting', isRecommit: st === 'recommit',
+      // A goal shared with the coach is passed by the coach only (the server
+      // refuses confirm-clean), and has no auto-charge timer to count down.
+      coachVerifies: !!cm.coach,
+      isPassedSelf: st === 'passed' && !cm.coach, isPassedCoach: st === 'passed' && !!cm.coach,
+      passedBadge: cm.coach ? 'Awaiting your coach' : 'Awaiting confirmation',
       isPaused: st === 'awaiting' || st === 'recommit',
       onArchive: this.act(async () => { await this.api.archiveCommitment(cm.id); await this.refresh(); }),
       rungLabel: r.days + '-day rung', stakeFmt: this.money(r.stake),
@@ -1510,6 +1545,14 @@ class Component extends DCLogic {
       currentRungDaysLabel: r.days + ' days',
       totalChargedThisFmt: this.money(totalChargedThis),
       hasHistory: rows.length > 0, historyRows: rows,
+      coachLine: cm.coach
+        ? (st0 === 'awaiting' || st0 === 'recommit'
+            ? 'Shared with your coach. They pass or fail each rung.'
+            : 'Shared with your coach. They pass or fail each rung; it can be unshared once this rung is decided.')
+        : 'Not shared with your coach. Share it and they, not you, decide whether each rung passed.',
+      canToggleCoach: !cm.coach || st0 === 'awaiting' || st0 === 'recommit',
+      coachToggleLabel: cm.coach ? 'Unshare' : 'Share with coach',
+      onToggleCoach: this.act(async () => { await this.api.setCoachShared(cm.id, !cm.coach); await this.refresh(); }),
     };
   }
 

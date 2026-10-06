@@ -257,6 +257,7 @@ session token from the OTP flow (what the browser uses) or the static
 | POST | `/v1/tick` | Sweep all commitments past grace; charge + park each. |
 | GET | `/v1/settings` | `{apiBaseUrl, recipient, totalCharged}`. |
 | PATCH | `/v1/settings` | Merge a settings patch. |
+| POST | `/v1/commitments/{id}/coach` | `{shared}`: share a goal with the coach, or unshare it (only while paused; 409 otherwise). |
 | GET | `/v1/metrics` | Data-tab tallies: metric vocabulary, per-day series, today's date. |
 | POST | `/v1/metrics/{key}/bump` | `{delta: 1\|-1}` on today's tally (floored at 0). The server's calendar (`METRICS_TZ`, default America/New_York) decides what "today" is. |
 
@@ -264,6 +265,51 @@ The ratchet rules, verbatim: a clean success advances the rung by **+1 day** and
 holds the stake; a slip/miss holds the length and raises the stake by **+$1** by
 default (overridable), and **never shortens** it. `suggestNextRung(days)` is
 `days + 1`.
+
+---
+
+## The coach (coach.samvara.app)
+
+An accountability buddy gets their own page, served by the API itself at `/`
+(and `/coach`), so `coach.samvara.app` points straight at the API host and
+calls `/v1/coach/*` same-origin. Source: `backend/app/static/coach.html`.
+
+- **Sign-in** is the same emailed 6-digit code, with the same limits, but only
+  one address can complete it. That address is hard-wired as a SHA-256 in
+  `config.py` (`coach_email_sha256`; the repo is public), not an env var, so no
+  deploy setting can widen it. A coach session is valid **only** on the coach
+  routes; an owner session or `API_TOKEN` is rejected there.
+- **Sharing.** The owner shares a goal from its Details screen. The coach sees
+  only shared goals. Unsharing is refused while a rung is running, so a rung
+  can't be pulled back from the coach to be self-certified.
+- **Verdicts.** On a shared goal only the coach can pass a rung (owner
+  `confirm-clean` is 403), and only once its deadline has arrived. The coach
+  can fail it any time; that charges the stake through the same
+  `beeminder.charge` (same token, caps, dryrun flag, lock, and ledger) and
+  recommits at the same length, +$1. The owner can still report their own slip.
+- **No auto-charge.** A shared goal waits for the coach's verdict however long
+  it takes. `/tick` and `/auto-miss` skip it, so the owner is never billed for
+  the coach being slow.
+- The coach can also **create** goals (shared automatically; stake capped at
+  `MAX_CHARGE_USD`), choose the next rung after a pass, and **archive** /
+  unarchive paused goals.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/v1/coach/auth/send-code` | Email a code to the coach address. Always 204. |
+| POST | `/v1/coach/auth/verify-code` | `{email, code}` → coach session token. |
+| GET | `/v1/coach/goals` | `{goals, maxCharge, dryrun}`: shared goals only. |
+| POST | `/v1/coach/goals` | Create `{name, base_days, base_stake}`. |
+| POST | `/v1/coach/goals/{id}/pass` | Rung passed (deadline must have arrived). No charge. |
+| POST | `/v1/coach/goals/{id}/fail` | Charge the stake and recommit. Optional `{days, stake}`. |
+| POST | `/v1/coach/goals/{id}/next` | Start the next rung on a paused goal `{days, stake}`. |
+| POST | `/v1/coach/goals/{id}/archive` · `/unarchive` | Same rules as the owner's. |
+
+Sign-out reuses `/v1/auth/sign-out`.
+
+**Going live:** redeploy the API, then on Fly `fly certs add coach.samvara.app`
+and add the DNS record it asks for (a CNAME from `coach` to the app's
+`.fly.dev` host). No CORS change is needed: the page and API share an origin.
 
 ---
 

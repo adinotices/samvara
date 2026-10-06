@@ -221,7 +221,22 @@ def apply_unarchive(cm: Commitment) -> None:
     cm.pop("archived_at", None)
 
 
+def is_coach_verified(cm: Commitment) -> bool:
+    """Shared with the coach: the coach, not the owner, rules on whether a
+    rung passed, and nothing charges it on a timer."""
+    return bool(cm.get("coach"))
+
+
+def is_due(cm: Commitment, at_ms: int | None = None) -> bool:
+    at = at_ms if at_ms is not None else now_ms()
+    return at >= grace_end_ms(cm["current_rung"], 0)
+
+
 def is_past_grace(cm: Commitment, grace_ms: int, at_ms: int | None = None) -> bool:
+    # A coach-verified rung waits for the coach's verdict however long it
+    # takes. Auto-charging it would bill the owner for the coach being late.
+    if is_coach_verified(cm):
+        return False
     at = at_ms if at_ms is not None else now_ms()
     r = cm["current_rung"]
     if r["completed"] or r["awaiting_decision"] or r["awaiting_recommit"] or r["auto_missed"]:

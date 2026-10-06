@@ -125,6 +125,13 @@ export async function unarchiveCommitment(id) {
   return req('POST', '/commitments/' + encodeURIComponent(id) + '/unarchive');
 }
 
+// Share a goal with the coach (coach.samvara.app), or take it back. A shared
+// goal is passed or failed by the coach only and never auto-charges. The
+// server refuses to unshare while a rung is running (409).
+export async function setCoachShared(id, shared) {
+  return req('POST', '/commitments/' + encodeURIComponent(id) + '/coach', { shared: !!shared });
+}
+
 // { dryRun } returns a preview { charged, recommit:{days,stake}, dryRun } and
 // moves no money. A live call charges the stake, then recommits (same length,
 // +$1 by default). Explicit { days, stake } override the recommit rung.

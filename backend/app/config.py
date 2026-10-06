@@ -69,6 +69,17 @@ class Settings:
     # From address shown in the login email. Must be a verified Resend domain.
     email_from: str = os.environ.get("EMAIL_FROM", "Samvara <noreply@samvara.app>")
 
+    # ── coach (accountability buddy, coach.samvara.app) ──────────────────
+    # The ONE address allowed through the coach sign-in flow. Hard-wired, not
+    # an env var, so no deploy setting can widen who may verify goals and
+    # trigger charges. Stored as a SHA-256 of the lowercased address because
+    # this repo is public; the plaintext arrives with each send-code request
+    # and is only ever emailed after it matches. To change coaches:
+    #   python -c "import hashlib;print(hashlib.sha256(b'new@addr').hexdigest())"
+    coach_email_sha256: str = (
+        "195ce95a20d35fa059cf37245543e4cad88f5950a1a71185ad8121be06401dec"
+    )
+
     # ── daily metrics (the Data tab) ─────────────────────────────────────
     # Which local calendar day a tap lands on. The server's clock rules so a
     # traveling phone can't split one evening across two days.

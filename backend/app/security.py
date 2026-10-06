@@ -1,8 +1,12 @@
 """Auth + request/response schemas.
 
-Two valid Bearer tokens are accepted when AUTH_MODE=token:
-  1. A session token issued by POST /v1/auth/verify-code (browser OTP flow).
+Two valid Bearer tokens are accepted on the owner routes when AUTH_MODE=token:
+  1. An owner session token issued by POST /v1/auth/verify-code (browser OTP flow).
   2. The static API_TOKEN env var (used only by the GitHub Actions cron tick).
+
+The coach routes (/v1/coach/*) accept ONLY a coach session token issued by
+POST /v1/coach/auth/verify-code. The two roles never cross: a coach token is
+rejected everywhere else, and an owner token is rejected on the coach routes.
 
 The static token never needs to be put in config.js — the browser always gets
 a session token via OTP. AUTH_MODE=none disables all auth for local dev.
@@ -31,13 +35,32 @@ def token_is_valid(authorization: str | None) -> bool:
     # Static API token — cron tick only.
     if settings.api_token and _secrets.compare_digest(token_value, settings.api_token):
         return True
-    # Session token — issued by the OTP flow; stored hashed.
-    return store.get_session(sha256(token_value)) is not None
+    # Owner session token — issued by the OTP flow; stored hashed. A coach
+    # session is deliberately NOT valid here.
+    sess = store.get_session(sha256(token_value))
+    return sess is not None and sess.get("role", "owner") == "owner"
+
+
+def coach_token_is_valid(authorization: str | None) -> bool:
+    if settings.auth_mode == "none":
+        return True
+    if not authorization:
+        return False
+    scheme, _, token_value = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token_value:
+        return False
+    sess = store.get_session(sha256(token_value))
+    return sess is not None and sess.get("role") == "coach"
 
 
 async def require_auth(authorization: str | None = Header(default=None)) -> None:
     if not token_is_valid(authorization):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing token.")
+
+
+async def require_coach(authorization: str | None = Header(default=None)) -> None:
+    if not coach_token_is_valid(authorization):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing coach token.")
 
 
 class SendCodeBody(BaseModel):
@@ -84,6 +107,17 @@ class BumpBody(BaseModel):
     # best-effort. Used only to decide when a penalty day's end-of-day sweep
     # fires; falls back to METRICS_TZ server-side if absent or unrecognized.
     tz: str | None = None
+
+
+class CoachShareBody(BaseModel):
+    shared: bool
+
+
+class CoachFailBody(BaseModel):
+    # Optional override of the recommit rung; default is the ratchet's own
+    # (same length, +$1, held under MAX_CHARGE_USD).
+    days: int | None = Field(default=None, ge=1)
+    stake: float | None = Field(default=None, ge=1)
 
 
 class SettingsPatch(BaseModel):

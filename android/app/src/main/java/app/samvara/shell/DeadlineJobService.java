@@ -109,6 +109,9 @@ public class DeadlineJobService extends JobService {
 
             boolean resolved = r.optBoolean("completed") || r.optBoolean("awaiting_decision");
             boolean parked = r.optBoolean("awaiting_recommit") || r.optBoolean("auto_missed");
+            // Shared with the coach: the coach rules on it after the deadline
+            // and nothing auto-charges, so the grace-window alerts don't apply.
+            boolean coach = cm.optBoolean("coach");
             long due = Instant.parse(r.getString("due")).toEpochMilli();
             long graceEnd = due + graceMs;
 
@@ -119,7 +122,7 @@ public class DeadlineJobService extends JobService {
                 notifyOnce(prefs, prefix + "parked", notifyId,
                         "Auto-charged " + String.format(Locale.US, "$%.2f", charged),
                         "'" + name + "' hit the end of its grace window. Recommit when you're ready.");
-            } else if (!resolved && now >= due && now < graceEnd) {
+            } else if (!resolved && !coach && now >= due && now < graceEnd) {
                 long hoursLeft = Math.max(1, (graceEnd - now) / H);
                 liveKeys.add(prefix + "grace");
                 liveKeys.add(prefix + "grace3");

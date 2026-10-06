@@ -23,23 +23,28 @@ import asyncio
 import datetime as dt
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from . import auth, beeminder, ratchet
 from .config import settings
 from .security import (
     BumpBody,
     ChooseNextBody,
+    CoachFailBody,
+    CoachShareBody,
     CreateBody,
     LapseBody,
     SendCodeBody,
     SettingsPatch,
     VerifyCodeBody,
     require_auth,
+    require_coach,
     token_is_valid,
 )
 from .store import store
@@ -84,6 +89,21 @@ def _require_unarchived(cid: str) -> dict[str, Any]:
 def _note(cm: dict[str, Any], outcome: str) -> str:
     r = cm["current_rung"]
     return f"Samvara: {outcome} on {cm['name']!r} ({r['days']}-day rung)"
+
+
+def _insert_new(name: str, days: int, stake: float, **extra: Any) -> dict[str, Any]:
+    # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
+    for _ in range(3):
+        cm = ratchet.new_commitment(name, days, stake)
+        cm.update(extra)
+        try:
+            with store.lock:
+                store.insert_commitment(cm)
+            return cm
+        except sqlite3.IntegrityError:
+            continue
+    raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        "Could not allocate a commitment id.")
 
 
 # ── email OTP login (no auth required — these are how you get auth) ──────────
@@ -188,23 +208,17 @@ async def get_settings() -> dict[str, Any]:
 # ── writes that never charge ─────────────────────────────────────────────────
 @app.post("/v1/commitments", dependencies=[Depends(require_auth)])
 async def create_commitment(body: CreateBody) -> dict[str, Any]:
-    # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
-    for _ in range(3):
-        cm = ratchet.new_commitment(body.name, body.base_days, body.base_stake)
-        try:
-            with store.lock:
-                store.insert_commitment(cm)
-            return cm
-        except sqlite3.IntegrityError:
-            continue
-    raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        "Could not allocate a commitment id.")
+    return _insert_new(body.name, body.base_days, body.base_stake)
 
 
 @app.post("/v1/commitments/{cid}/confirm-clean", dependencies=[Depends(require_auth)])
 async def confirm_clean(cid: str) -> dict[str, Any]:
     with store.lock:
         cm = _require_unarchived(cid)
+        if ratchet.is_coach_verified(cm):
+            # The whole point of sharing a goal: only the coach can pass it.
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Your coach verifies this goal; only they can pass it.")
         ratchet.apply_confirm_clean(cm)
         store.update_commitment(cm)
     return cm
@@ -248,6 +262,27 @@ async def unarchive_commitment(cid: str) -> dict[str, Any]:
     return cm
 
 
+# Sharing hands the verdict to the coach (and stops the auto-charge timer).
+# Unsharing is only allowed while the goal is paused, so a rung in flight
+# can't be pulled back from the coach to be self-certified.
+@app.post("/v1/commitments/{cid}/coach", dependencies=[Depends(require_auth)])
+async def share_with_coach(cid: str, body: CoachShareBody) -> dict[str, Any]:
+    async with _charge_lock:
+        with store.lock:
+            cm = _require(cid)
+            if body.shared:
+                cm["coach"] = True
+            elif ratchet.is_coach_verified(cm):
+                if not ratchet.is_paused(cm):
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "A rung in progress stays with your coach; it can be "
+                        "unshared once the coach has passed or failed it.")
+                cm.pop("coach", None)
+            store.update_commitment(cm)
+    return cm
+
+
 @app.patch("/v1/settings", dependencies=[Depends(require_auth)])
 async def update_settings(patch: SettingsPatch) -> dict[str, Any]:
     return store.update_settings(patch.model_dump(exclude_none=True))
@@ -264,7 +299,8 @@ _charge_lock = asyncio.Lock()
 # ratchet.apply_slip and persisted with the commitment — see _slip_or_miss.
 
 
-async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, Any]:
+async def _slip_or_miss(cid: str, body: LapseBody, outcome: str,
+                        by: str | None = None) -> dict[str, Any]:
     """Shared body for slip ('lapse') and miss ('missed').
 
     Charge order matters: on a live (non-dry) run we charge Beeminder before
@@ -307,7 +343,8 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
         result["recommit"] = {"days": new_days, "stake": new_stake}
 
         try:
-            charge = await beeminder.charge(charged, _note(cm, outcome))
+            charge = await beeminder.charge(
+                charged, _note(cm, outcome + (f" (verified by {by})" if by else "")))
         except beeminder.ChargeError as e:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(e)) from e
 
@@ -315,6 +352,8 @@ async def _slip_or_miss(cid: str, body: LapseBody, outcome: str) -> dict[str, An
             # apply_slip stamps cm["last_lapse_ms"]; persisting it here is what
             # makes the debounce above outlive the process.
             ratchet.apply_slip(cm, new_days, new_stake, charged, outcome=outcome)
+            if by:
+                cm["history"][-1]["by"] = by
             store.add_total_charged(charged)
             store.update_commitment(cm)
 
@@ -635,3 +674,154 @@ async def tick() -> dict[str, Any]:
         "penalties_charged_count": len(penalties_charged),
         "penalty_errors": penalty_errors,
     }
+
+
+# ── coach (accountability buddy) ─────────────────────────────────────────────
+# A second, narrower sign-in for the single hard-wired coach address (see
+# config.coach_email_sha256). The coach sees only goals shared with them
+# (cm["coach"]), rules on whether each rung passed or failed, and can create
+# and archive goals. A failure charges through the same beeminder.charge —
+# the same token, caps, dryrun flag, lock and ledger as every other charge.
+COACH_PAGE = Path(__file__).parent / "static" / "coach.html"
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/coach", include_in_schema=False)
+async def coach_page() -> FileResponse:
+    """The coach's page. Served by the API itself so coach.samvara.app can
+    point straight at this server and call /v1/coach/* same-origin."""
+    return FileResponse(COACH_PAGE, media_type="text/html",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/v1/coach/auth/send-code", status_code=204, response_class=Response)
+async def coach_send_code(body: SendCodeBody):
+    """Email a code to the coach. Always 204, for the same no-probing reason
+    as the owner's send-code."""
+    if settings.auth_mode == "none":
+        return
+    email = body.email.strip().lower()
+    if not auth.is_coach_email(email):
+        log.info("coach send-code for unauthorised address ignored")
+        return
+    code = auth.issue_otp(email)
+    if code is None:
+        log.info("coach send-code inside cooldown; previous code still valid")
+        return
+    try:
+        await auth.send_otp_email(email, code, subject="Your Samvara coach login code")
+    except Exception:
+        log.exception("coach OTP email delivery failed")
+
+
+@app.post("/v1/coach/auth/verify-code")
+async def coach_verify_code(body: VerifyCodeBody) -> dict[str, str]:
+    if settings.auth_mode == "none":
+        return {"token": "dev"}
+    email = body.email.strip().lower()
+    if not auth.is_coach_email(email) or auth.is_owner_email(email):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
+    if not auth.verify_and_consume_otp(email, body.code):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired code.")
+    return {"token": auth.create_session(email, role="coach")}
+
+
+def _require_coach_goal(cid: str) -> dict[str, Any]:
+    cm = store.get_commitment(cid)
+    # A goal that isn't shared is indistinguishable from one that doesn't exist.
+    if cm is None or not ratchet.is_coach_verified(cm):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No shared goal {cid!r}.")
+    return cm
+
+
+def _require_live_coach_goal(cid: str) -> dict[str, Any]:
+    cm = _require_coach_goal(cid)
+    if cm.get("archived_at"):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "This goal is archived; unarchive it first.")
+    return cm
+
+
+def _check_coach_stake(stake: float) -> None:
+    # The owner may set an over-cap stake deliberately (it 402s at charge
+    # time); the coach may not set one at all, so a rung they choose is always
+    # one they can actually charge.
+    if stake > settings.max_charge:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"Stake can be at most ${settings.max_charge:.2f}.")
+
+
+@app.get("/v1/coach/goals", dependencies=[Depends(require_coach)])
+async def coach_goals() -> dict[str, Any]:
+    goals = [cm for cm in store.list_commitments() if ratchet.is_coach_verified(cm)]
+    goals.sort(key=lambda cm: cm["current_rung"]["due"])
+    return {
+        "goals": goals,
+        "maxCharge": settings.max_charge,
+        "dryrun": settings.beeminder_dryrun,
+    }
+
+
+@app.post("/v1/coach/goals", dependencies=[Depends(require_coach)])
+async def coach_create_goal(body: CreateBody) -> dict[str, Any]:
+    _check_coach_stake(body.base_stake)
+    return _insert_new(body.name, body.base_days, body.base_stake,
+                       coach=True, created_by="coach")
+
+
+@app.post("/v1/coach/goals/{cid}/pass", dependencies=[Depends(require_coach)])
+async def coach_pass(cid: str) -> dict[str, Any]:
+    """The rung came in clean. Only once its deadline has arrived — a pass
+    before then would certify days that haven't happened yet. No charge."""
+    async with _charge_lock:
+        with store.lock:
+            cm = _require_live_coach_goal(cid)
+            r = cm["current_rung"]
+            if r["completed"] or r["awaiting_decision"] or r["awaiting_recommit"]:
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    "This rung is already resolved.")
+            if not ratchet.is_due(cm):
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    "This rung hasn't reached its deadline yet.")
+            ratchet.apply_confirm_clean(cm)
+            cm["history"][-1]["by"] = "coach"
+            store.update_commitment(cm)
+    return cm
+
+
+@app.post("/v1/coach/goals/{cid}/fail", dependencies=[Depends(require_coach)])
+async def coach_fail(cid: str, body: CoachFailBody) -> dict[str, Any]:
+    """The rung failed: charge its stake to Beeminder and recommit (same
+    length, +$1 by default). Allowed any time — a slip mid-rung is a fail."""
+    cm = _require_live_coach_goal(cid)
+    if body.stake is not None:
+        _check_coach_stake(body.stake)
+    outcome = "missed" if ratchet.is_due(cm) else "lapse"
+    lapse = LapseBody(dryRun=False, raise_=True, days=body.days, stake=body.stake)
+    return await _slip_or_miss(cid, lapse, outcome, by="coach")
+
+
+@app.post("/v1/coach/goals/{cid}/next", dependencies=[Depends(require_coach)])
+async def coach_next(cid: str, body: ChooseNextBody) -> dict[str, Any]:
+    """Start the next rung on a paused goal (after a pass)."""
+    _check_coach_stake(body.stake)
+    with store.lock:
+        cm = _require_live_coach_goal(cid)
+        if not ratchet.is_paused(cm):
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "A rung is still running; pass or fail it first.")
+        ratchet.apply_choose_next(cm, body.days, body.stake)
+        store.update_commitment(cm)
+    return cm
+
+
+@app.post("/v1/coach/goals/{cid}/archive", dependencies=[Depends(require_coach)])
+async def coach_archive(cid: str) -> dict[str, Any]:
+    _require_coach_goal(cid)
+    return await archive_commitment(cid)
+
+
+@app.post("/v1/coach/goals/{cid}/unarchive", dependencies=[Depends(require_coach)])
+async def coach_unarchive(cid: str) -> dict[str, Any]:
+    _require_coach_goal(cid)
+    return await unarchive_commitment(cid)

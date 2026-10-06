@@ -63,6 +63,15 @@ class Store:
                        expires_at INTEGER NOT NULL
                    )"""
             )
+            # Who a session belongs to: 'owner' (the main app, full access) or
+            # 'coach' (coach.samvara.app, coach-shared goals only). Added after
+            # launch, so older databases gain the column here; every session
+            # that predates it was issued to the owner.
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(sessions)")}
+            if "role" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'"
+                )
             # Daily tally per tracked metric (the Data tab). One row per
             # metric per local day; day is YYYY-MM-DD in the configured tz.
             self._conn.execute(
@@ -331,13 +340,14 @@ class Store:
             return False
 
     # ── sessions (token stored hashed) ────────────────────────────────────
-    def save_session(self, token_hash: str, email: str, expires_at: int) -> None:
+    def save_session(self, token_hash: str, email: str, expires_at: int,
+                     role: str = "owner") -> None:
         now = int(time.time() * 1000)
         with self.lock, self._conn:
             self._conn.execute("DELETE FROM sessions WHERE expires_at<=?", (now,))
             self._conn.execute(
-                "INSERT INTO sessions (token_hash, email, expires_at) VALUES (?, ?, ?)",
-                (token_hash, email, expires_at),
+                "INSERT INTO sessions (token_hash, email, expires_at, role) VALUES (?, ?, ?, ?)",
+                (token_hash, email, expires_at, role),
             )
 
     def delete_session(self, token_hash: str) -> None:
@@ -348,10 +358,10 @@ class Store:
         now = int(time.time() * 1000)
         with self.lock:
             row = self._conn.execute(
-                "SELECT email, expires_at FROM sessions WHERE token_hash=? AND expires_at>?",
+                "SELECT email, expires_at, role FROM sessions WHERE token_hash=? AND expires_at>?",
                 (token_hash, now),
             ).fetchone()
-        return {"email": row[0], "expires_at": row[1]} if row else None
+        return {"email": row[0], "expires_at": row[1], "role": row[2]} if row else None
 
 
 store = Store(cfg.db_path)

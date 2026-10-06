@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Samvara Coach</title>
+<!--
+  The coach's page (coach.samvara.app). Served by the API itself (GET /), so
+  every call below is same-origin /v1/coach/*. Sign-in is the same email-code
+  flow as the main app, but only the one coach address can complete it, and
+  the session it yields is good for the coach routes only.
+-->
+<style>
+  :root {
+    --bg:#f4f2ee; --surface:#fbfaf7; --surface2:#eceae4; --fg:#1d1c19; --muted:#77746c;
+    --faint:#a8a49b; --line:#e4e0d8; --accent:#3d6b52; --accent-fg:#fff; --missed:#a3573a;
+    --lapse:#9c7d33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#161713; --surface:#1e201b; --surface2:#282a24; --fg:#eeece5; --muted:#918e84;
+      --faint:#68665d; --line:#30322b; --accent:#63a37e; --accent-fg:#101410; --missed:#cb7d5b;
+      --lapse:#c3a35b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.5 "IBM Plex Sans", system-ui, -apple-system, sans-serif; }
+  main { max-width:620px; margin:0 auto; padding:24px 16px 64px; }
+  h1, h2, .serif { font-family:"Newsreader", Georgia, serif; font-weight:600; letter-spacing:-.015em; }
+  h1 { font-size:27px; margin:0 0 4px; }
+  h2 { font-size:19px; margin:0; }
+  p.lead { margin:0 0 20px; color:var(--muted); font-size:13.5px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:14px;
+          padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .card.archived { border-style:dashed; }
+  .stack { display:flex; flex-direction:column; gap:12px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .between { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .mono { font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+  .muted { color:var(--muted); } .faint { color:var(--faint); font-size:12px; }
+  .tag { font-size:11px; font-weight:500; color:var(--muted); white-space:nowrap; }
+  .tag.due { color:var(--missed); } .tag.ok { color:var(--accent); }
+  .note { font-size:13px; padding:10px 12px; border-radius:10px;
+          background:color-mix(in srgb, var(--missed) 9%, transparent);
+          border:1px solid color-mix(in srgb, var(--missed) 28%, transparent); }
+  button { font:inherit; min-height:44px; padding:0 16px; border-radius:10px; cursor:pointer;
+           border:1px solid var(--line); background:transparent; color:var(--fg); }
+  button.primary { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); font-weight:600; }
+  button.danger { color:var(--missed); border-color:color-mix(in srgb, var(--missed) 45%, var(--line)); }
+  button.ghost { border-color:transparent; color:var(--muted); }
+  button:disabled { opacity:.5; cursor:default; }
+  input { font:inherit; min-height:44px; padding:0 12px; border-radius:10px; width:100%;
+          border:1px solid var(--line); background:var(--surface); color:var(--fg); }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); flex:1; min-width:110px; }
+  .err { color:var(--missed); font-size:13px; }
+  .bar { height:4px; border-radius:999px; background:var(--surface2); overflow:hidden; }
+  .bar > div { height:100%; background:var(--accent); }
+  .hist { font-size:12.5px; color:var(--muted); display:flex; flex-direction:column; gap:2px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .wordmark { font-family:"Newsreader", Georgia, serif; font-size:20px; font-weight:600; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <span class="wordmark">Samvara <span class="muted" style="font-weight:400">· Coach</span></span>
+    <button class="ghost" id="signout" hidden>Sign out</button>
+  </div>
+
+  <!-- sign-in -->
+  <section id="auth" hidden>
+    <h1>Coach sign-in</h1>
+    <p class="lead">We'll email you a 6-digit code.</p>
+    <form id="emailForm" class="stack">
+      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+      <button class="primary" type="submit">Send code</button>
+    </form>
+    <form id="codeForm" class="stack" hidden>
+      <p class="muted" style="margin:0;font-size:13.5px">If that address is the coach's, a code is on its way. It expires in 10 minutes.</p>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" required>
+      <button class="primary" type="submit">Sign in</button>
+      <button class="ghost" type="button" id="back">Use a different address</button>
+    </form>
+    <p class="err" id="authErr" hidden></p>
+  </section>
+
+  <!-- goals -->
+  <section id="app" hidden>
+    <div class="between" style="margin-bottom:4px">
+      <h1>Goals you verify</h1>
+      <button id="newBtn">New goal</button>
+    </div>
+    <p class="lead" id="lead">You decide whether each rung passed. A fail charges its stake through Beeminder.</p>
+    <p class="note" id="dryNote" hidden>Charges are in dry-run mode on the server: fails are recorded, but no money moves.</p>
+
+    <form id="createForm" class="card" hidden style="margin-bottom:16px">
+      <h2>New goal</h2>
+      <label>Name<input id="cName" required maxlength="120" placeholder="e.g. No social media"></label>
+      <div class="row">
+        <label>Rung length (days)<input id="cDays" type="number" min="1" step="1" value="7" required></label>
+        <label>Stake ($)<input id="cStake" type="number" min="1" step="1" value="5" required></label>
+      </div>
+      <p class="faint" style="margin:0">The first rung starts now. If you mark it failed, the stake is charged and it restarts at the same length, $1 higher.</p>
+      <div class="row"><button class="primary" type="submit">Create</button><button class="ghost" type="button" id="cCancel">Cancel</button></div>
+    </form>
+
+    <p class="err" id="appErr" hidden></p>
+    <div id="goals" class="stack"></div>
+    <p class="muted" id="empty" hidden style="text-align:center;padding:30px 0;font-size:14px">No goals have been shared with you yet.</p>
+
+    <div id="archivedWrap" hidden style="margin-top:22px">
+      <button class="ghost" id="archToggle" style="padding:0 4px"></button>
+      <div id="archived" class="stack" hidden style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section id="loading"><p class="muted">Loading…</p></section>
+</main>
+
+<script>
+(() => {
+  const LS = 'samvara.coachToken';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const money = n => '$' + Number(n || 0).toFixed(2);
+  const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  let state = { goals: [], maxCharge: 50, dryrun: false, showArchived: false, busy: false, openNext: null };
+
+  function token() { try { return localStorage.getItem(LS) || ''; } catch (e) { return ''; } }
+  function setToken(t) { try { t ? localStorage.setItem(LS, t) : localStorage.removeItem(LS); } catch (e) {} }
+
+  async function req(method, path, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    const t = token();
+    if (t) headers.Authorization = 'Bearer ' + t;
+    const res = await fetch('/v1' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (res.status === 401 && path.indexOf('/coach/auth/') !== 0) {
+      setToken(''); show('auth'); throw new Error('Your session expired — sign in again.');
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { const j = await res.json(); detail = typeof j.detail === 'string' ? j.detail : (j.detail && j.detail[0] && j.detail[0].msg) || detail; } catch (e) {}
+      throw new Error(detail);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  function show(which) {
+    for (const id of ['auth', 'app', 'loading']) $(id).hidden = id !== which;
+    $('signout').hidden = which !== 'app';
+  }
+  function err(id, msg) { $(id).textContent = msg || ''; $(id).hidden = !msg; }
+
+  // ── sign-in ──
+  let authEmail = '';
+  $('emailForm').onsubmit = async e => {
+    e.preventDefault(); err('authErr');
+    authEmail = $('email').value.trim().toLowerCase();
+    try { await req('POST', '/coach/auth/send-code', { email: authEmail }); }
+    catch (x) { return err('authErr', x.message); }
+    $('emailForm').hidden = true; $('codeForm').hidden = false; $('code').focus();
+  };
+  $('codeForm').onsubmit = async e => {
+    e.preventDefault(); err('authErr');
+    try {
+      const r = await req('POST', '/coach/auth/verify-code', { email: authEmail, code: $('code').value.trim() });
+      setToken(r.token); $('code').value = '';
+      $('codeForm').hidden = true; $('emailForm').hidden = false;
+      await load();
+    } catch (x) { err('authErr', x.message === 'Invalid or expired code.' ? 'That code is wrong or expired.' : x.message); }
+  };
+  $('back').onclick = () => { $('codeForm').hidden = true; $('emailForm').hidden = false; err('authErr'); };
+  $('signout').onclick = async () => {
+    try { await req('POST', '/auth/sign-out'); } catch (e) {}
+    setToken(''); state.goals = []; show('auth');
+  };
+
+  // ── data ──
+  async function load() {
+    const r = await req('GET', '/coach/goals');
+    state.goals = r.goals; state.maxCharge = r.maxCharge; state.dryrun = r.dryrun;
+    show('app'); render();
+  }
+
+  async function act(fn) {
+    if (state.busy) return;
+    state.busy = true; err('appErr'); render();
+    try { await fn(); await load(); }
+    catch (x) { err('appErr', x.message); }
+    finally { state.busy = false; render(); }
+  }
+
+  // ── create ──
+  $('newBtn').onclick = () => { $('createForm').hidden = false; $('cName').focus(); };
+  $('cCancel').onclick = () => { $('createForm').hidden = true; };
+  $('createForm').onsubmit = e => {
+    e.preventDefault();
+    const name = $('cName').value.trim(), days = Math.round(+$('cDays').value), stake = +$('cStake').value;
+    if (!name) return err('appErr', 'Give the goal a name.');
+    if (!(days >= 1)) return err('appErr', 'Length must be at least 1 day.');
+    if (!(stake >= 1 && stake <= state.maxCharge)) return err('appErr', 'Stake must be between $1 and ' + money(state.maxCharge) + '.');
+    act(async () => {
+      await req('POST', '/coach/goals', { name, base_days: days, base_stake: stake });
+      $('createForm').hidden = true; $('cName').value = '';
+    });
+  };
+
+  // ── rendering ──
+  function statusOf(g, now) {
+    const r = g.current_rung;
+    if (r.awaiting_recommit) return 'recommit';
+    if (r.awaiting_decision || r.completed) return 'passed';
+    return Date.parse(r.due) <= now ? 'due' : 'running';
+  }
+  function left(ms) {
+    const D = 864e5, H = 36e5, M = 6e4;
+    const d = Math.floor(ms / D), h = Math.floor(ms % D / H), m = Math.floor(ms % H / M);
+    return d > 0 ? d + 'd ' + h + 'h' : h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+  }
+  function fmtDate(iso) { return new Date(iso).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }); }
+
+  function nextRungDefaults(g) {
+    const r = g.current_rung;
+    return r.awaiting_recommit
+      ? { days: r.days, stake: Math.min((r.charged_amount || r.stake) + 1, state.maxCharge) }
+      : { days: r.days + 1, stake: r.stake };
+  }
+
+  function goalCard(g, now) {
+    const r = g.current_rung, st = statusOf(g, now);
+    const due = Date.parse(r.due), start = Date.parse(r.start);
+    const pct = Math.max(0, Math.min(100, (now - start) / (due - start) * 100));
+    const failStake = Math.min(r.stake + 1, state.maxCharge);
+    const dis = state.busy ? ' disabled' : '';
+    const tag = { running: ['On a rung', ''], due: ['Needs your verdict', 'due'], passed: ['Passed — awaiting next rung', 'ok'], recommit: ['Auto-charged — awaiting recommit', 'due'] }[st];
+    let body = '';
+    if (st === 'running') {
+      body = `<div class="between"><span class="mono">${left(due - now)} left</span><span class="faint">ends ${esc(fmtDate(r.due))}</span></div>
+        <div class="bar"><div style="width:${pct}%"></div></div>
+        <div class="row"><button class="danger" data-act="fail" data-id="${g.id}"${dis}>Mark failed (${money(r.stake)})</button></div>
+        <p class="faint" style="margin:0">You can pass it once the deadline arrives. Fail it any time they slip.</p>`;
+    } else if (st === 'due') {
+      body = `<p class="note" style="margin:0">The ${r.days}-day rung ended ${esc(fmtDate(r.due))}. Did they stay clean? Nothing is charged until you decide.</p>
+        <div class="row">
+          <button class="primary" data-act="pass" data-id="${g.id}"${dis}>Passed</button>
+          <button class="danger" data-act="fail" data-id="${g.id}"${dis}>Failed — charge ${money(r.stake)}</button>
+        </div>
+        <p class="faint" style="margin:0">A fail restarts the same ${r.days}-day rung at ${money(failStake)}.</p>`;
+    } else {
+      const d = nextRungDefaults(g), open = state.openNext === g.id;
+      body = (st === 'recommit'
+          ? `<p class="note" style="margin:0">Auto-charged ${money(r.charged_amount || r.stake)} before this goal was shared with you. Nothing restarts until a new rung is chosen.</p>`
+          : `<p style="margin:0;font-size:13.5px">The ${r.days}-day rung came in clean. Choose the next rung, or archive the goal.</p>`)
+        + (open
+          ? `<div class="row">
+               <label>Days<input type="number" min="1" step="1" id="nd-${g.id}" value="${d.days}"></label>
+               <label>Stake ($)<input type="number" min="1" max="${state.maxCharge}" step="1" id="ns-${g.id}" value="${d.stake}"></label>
+             </div>
+             <div class="row"><button class="primary" data-act="next" data-id="${g.id}"${dis}>Start rung</button><button class="ghost" data-act="closeNext" data-id="${g.id}">Cancel</button></div>`
+          : `<div class="row">
+               <button class="primary" data-act="openNext" data-id="${g.id}"${dis}>Start next rung</button>
+               <button class="ghost" data-act="archive" data-id="${g.id}"${dis}>Archive</button>
+             </div>`);
+    }
+    const hist = g.history.slice(-5).reverse().map(h => {
+      const c = { success: 'var(--accent)', lapse: 'var(--lapse)', missed: 'var(--missed)' }[h.outcome];
+      const w = { success: 'Passed', lapse: 'Failed mid-rung', missed: 'Failed' }[h.outcome];
+      return `<div><span class="dot" style="background:${c}"></span>${esc(h.settled)} · ${h.days}-day · ${w}${h.outcome === 'success' ? '' : ' · ' + money(h.stake) + ' charged'}${h.by === 'coach' ? ' · by you' : ''}</div>`;
+    }).join('');
+    return `<div class="card">
+      <div class="between"><h2>${esc(g.name)}</h2><span class="tag ${tag[1]}">${tag[0]}</span></div>
+      <div class="muted" style="font-size:13px">${plural(r.days, 'day')} rung · <span class="mono">${money(r.stake)}</span> at stake</div>
+      ${body}
+      ${hist ? `<div class="hist">${hist}</div>` : ''}
+    </div>`;
+  }
+
+  function render() {
+    if ($('app').hidden) return;
+    const now = Date.now();
+    $('dryNote').hidden = !state.dryrun;
+    const live = state.goals.filter(g => !g.archived_at), arch = state.goals.filter(g => g.archived_at);
+    $('goals').innerHTML = live.map(g => goalCard(g, now)).join('');
+    $('empty').hidden = live.length > 0;
+    $('archivedWrap').hidden = arch.length === 0;
+    $('archToggle').textContent = (state.showArchived ? 'Hide archived' : 'Show archived') + ' (' + arch.length + ')';
+    $('archived').hidden = !state.showArchived;
+    $('archived').innerHTML = arch.map(g => `<div class="card archived"><div class="between">
+        <div><div class="serif muted" style="font-size:16px">${esc(g.name)}</div>
+        <div class="faint">${g.current_rung.days}-day rung · archived ${esc(g.archived_at.slice(0, 10))}</div></div>
+        <button data-act="unarchive" data-id="${g.id}"${state.busy ? ' disabled' : ''}>Unarchive</button></div></div>`).join('');
+  }
+  $('archToggle').onclick = () => { state.showArchived = !state.showArchived; render(); };
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]');
+    if (!b || b.disabled) return;
+    const id = b.dataset.id, g = state.goals.find(x => x.id === id);
+    if (!g) return;
+    const path = '/coach/goals/' + encodeURIComponent(id);
+    switch (b.dataset.act) {
+      case 'pass':
+        if (confirm('Pass the ' + g.current_rung.days + '-day rung of "' + g.name + '"?')) act(() => req('POST', path + '/pass'));
+        break;
+      case 'fail':
+        if (confirm('Mark "' + g.name + '" failed?\n\nThis charges ' + money(g.current_rung.stake) + ' through Beeminder now.')) act(() => req('POST', path + '/fail', {}));
+        break;
+      case 'openNext': state.openNext = id; render(); break;
+      case 'closeNext': state.openNext = null; render(); break;
+      case 'next': {
+        const days = Math.round(+$('nd-' + id).value), stake = +$('ns-' + id).value;
+        if (!(days >= 1)) return err('appErr', 'Length must be at least 1 day.');
+        if (!(stake >= 1 && stake <= state.maxCharge)) return err('appErr', 'Stake must be between $1 and ' + money(state.maxCharge) + '.');
+        act(async () => { await req('POST', path + '/next', { days, stake }); state.openNext = null; });
+        break;
+      }
+      case 'archive': act(() => req('POST', path + '/archive')); break;
+      case 'unarchive': act(() => req('POST', path + '/unarchive')); break;
+    }
+  });
+
+  // Countdowns tick once a minute (no seconds shown); skip while a rung form
+  // is open so typing isn't wiped by a re-render.
+  setInterval(() => { if (!state.openNext) render(); }, 30000);
+
+  if (token()) load().catch(e => { if (!$('auth').hidden) return; show('app'); err('appErr', e.message); });
+  else show('auth');
+})();
+</script>
+</body>
+</html>

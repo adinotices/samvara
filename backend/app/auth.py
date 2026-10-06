@@ -60,13 +60,22 @@ def verify_and_consume_otp(email: str, code: str) -> bool:
     return store.consume_otp(email, sha256(code), MAX_ATTEMPTS)
 
 
-def create_session(email: str) -> str:
+def create_session(email: str, role: str = "owner") -> str:
     token = secrets.token_hex(32)
-    store.save_session(sha256(token), email, _now_ms() + SESSION_TTL_MS)
+    store.save_session(sha256(token), email, _now_ms() + SESSION_TTL_MS, role=role)
     return token
 
 
-async def send_otp_email(email: str, code: str) -> None:
+def is_owner_email(email: str) -> bool:
+    return bool(settings.auth_email) and email == settings.auth_email.strip().lower()
+
+
+def is_coach_email(email: str) -> bool:
+    """True only for the single hard-wired coach address (see config)."""
+    return secrets.compare_digest(sha256(email), settings.coach_email_sha256)
+
+
+async def send_otp_email(email: str, code: str, subject: str = "Your Samvara login code") -> None:
     if not settings.resend_api_key:
         raise RuntimeError("RESEND_API_KEY is not configured on the server.")
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -76,9 +85,9 @@ async def send_otp_email(email: str, code: str) -> None:
             json={
                 "from": settings.email_from,
                 "to": [email],
-                "subject": "Your Samvara login code",
+                "subject": subject,
                 "text": (
-                    f"Your Samvara login code is: {code}\n\n"
+                    f"{subject}: {code}\n\n"
                     "It expires in 10 minutes. If you didn't request this, ignore it."
                 ),
             },

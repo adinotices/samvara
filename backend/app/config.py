@@ -69,7 +69,7 @@ class Settings:
     # From address shown in the login email. Must be a verified Resend domain.
     email_from: str = os.environ.get("EMAIL_FROM", "Samvara <noreply@samvara.app>")
 
-    # ── coach (accountability buddy, coach.samvara.app) ──────────────────
+    # ── coach (accountability buddy, samvara.app/coach) ──────────────────
     # The ONE address allowed through the coach sign-in flow. Hard-wired, not
     # an env var, so no deploy setting can widen who may verify goals and
     # trigger charges. Stored as a SHA-256 of the lowercased address because

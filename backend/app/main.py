@@ -23,13 +23,11 @@ import asyncio
 import datetime as dt
 import logging
 import sqlite3
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from . import auth, beeminder, ratchet
 from .config import settings
@@ -682,16 +680,7 @@ async def tick() -> dict[str, Any]:
 # (cm["coach"]), rules on whether each rung passed or failed, and can create
 # and archive goals. A failure charges through the same beeminder.charge —
 # the same token, caps, dryrun flag, lock and ledger as every other charge.
-COACH_PAGE = Path(__file__).parent / "static" / "coach.html"
-
-
-@app.get("/", include_in_schema=False)
-@app.get("/coach", include_in_schema=False)
-async def coach_page() -> FileResponse:
-    """The coach's page. Served by the API itself so coach.samvara.app can
-    point straight at this server and call /v1/coach/* same-origin."""
-    return FileResponse(COACH_PAGE, media_type="text/html",
-                        headers={"Cache-Control": "no-cache"})
+# The page itself is static (frontend/coach/, published at samvara.app/coach/).
 
 
 @app.post("/v1/coach/auth/send-code", status_code=204, response_class=Response)

@@ -5,13 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Samvara Coach</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <!--
-  The coach's page (coach.samvara.app). Served by the API itself (GET /), so
-  every call below is same-origin /v1/coach/*. Sign-in is the same email-code
-  flow as the main app, but only the one coach address can complete it, and
-  the session it yields is good for the coach routes only.
+  The coach's page (samvara.app/coach/). Published to GitHub Pages next to the
+  main app and calls the API cross-origin at the apiBaseUrl from ../config.js,
+  exactly like the main app. Sign-in is the same email-code flow, but only the
+  one coach address can complete it, and the session it yields is good for
+  the coach routes only. Its token lives under its own localStorage key, so it
+  never collides with the owner's session on the same origin.
 -->
+<script src="../config.js"></script>
 <style>
+  @font-face { font-family:"Newsreader"; font-weight:600; font-display:swap;
+               src:url("../fonts/newsreader-600-latin.woff2") format("woff2"); }
   :root {
     --bg:#f4f2ee; --surface:#fbfaf7; --surface2:#eceae4; --fg:#1d1c19; --muted:#77746c;
     --faint:#a8a49b; --line:#e4e0d8; --accent:#3d6b52; --accent-fg:#fff; --missed:#a3573a;
@@ -124,6 +130,10 @@
 <script>
 (() => {
   const LS = 'samvara.coachToken';
+  // Same resolution as the main app's api-client: "https://host" and
+  // "https://host/v1" both work; empty means same origin.
+  const API = String((window.SAMVARA_CONFIG || {}).apiBaseUrl || '').trim()
+    .replace(/\/+$/, '').replace(/\/v1$/, '');
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money = n => '$' + Number(n || 0).toFixed(2);
@@ -137,7 +147,7 @@
     const headers = { 'Content-Type': 'application/json' };
     const t = token();
     if (t) headers.Authorization = 'Bearer ' + t;
-    const res = await fetch('/v1' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const res = await fetch(API + '/v1' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     if (res.status === 401 && path.indexOf('/coach/auth/') !== 0) {
       setToken(''); show('auth'); throw new Error('Your session expired — sign in again.');
     }

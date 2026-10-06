@@ -122,6 +122,7 @@ frontend/
     app.html       the app's actual HTML/JS, unpacked and readable — EDIT THIS
     shell.html     bundle runtime/fonts/resources — machine territory
   fonts/           self-hosted Newsreader woff2 (the wordmark's ṃ itself is CSS)
+  coach/index.html the coach's page (samvara.app/coach/), plain HTML/JS
   index.html       generated from src/ by the build (git-ignored)
   api-client.js    the REAL fetch client (drop-in for the mock)
   config.example.js   copy to config.js per environment (git-ignored)
@@ -268,11 +269,13 @@ default (overridable), and **never shortens** it. `suggestNextRung(days)` is
 
 ---
 
-## The coach (coach.samvara.app)
+## The coach (samvara.app/coach/)
 
-An accountability buddy gets their own page, served by the API itself at `/`
-(and `/coach`), so `coach.samvara.app` points straight at the API host and
-calls `/v1/coach/*` same-origin. Source: `backend/app/static/coach.html`.
+An accountability buddy gets their own page at `https://samvara.app/coach/`.
+It's a static page (`frontend/coach/index.html`) published with the main app
+and calls `/v1/coach/*` at the same `apiBaseUrl` from `config.js`, so it needs
+no domain or CORS setup of its own. Its session lives under its own
+localStorage key (`samvara.coachToken`), separate from the owner's.
 
 - **Sign-in** is the same emailed 6-digit code, with the same limits, but only
   one address can complete it. That address is hard-wired as a SHA-256 in
@@ -307,9 +310,8 @@ calls `/v1/coach/*` same-origin. Source: `backend/app/static/coach.html`.
 
 Sign-out reuses `/v1/auth/sign-out`.
 
-**Going live:** redeploy the API, then on Fly `fly certs add coach.samvara.app`
-and add the DNS record it asks for (a CNAME from `coach` to the app's
-`.fly.dev` host). No CORS change is needed: the page and API share an origin.
+**Going live:** the page ships with the next Pages deploy; the coach routes
+exist only once the API is redeployed.
 
 ---
 

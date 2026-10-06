@@ -125,7 +125,7 @@ export async function unarchiveCommitment(id) {
   return req('POST', '/commitments/' + encodeURIComponent(id) + '/unarchive');
 }
 
-// Share a goal with the coach (coach.samvara.app), or take it back. A shared
+// Share a goal with the coach (samvara.app/coach), or take it back. A shared
 // goal is passed or failed by the coach only and never auto-charges. The
 // server refuses to unshare while a rung is running (409).
 export async function setCoachShared(id, shared) {

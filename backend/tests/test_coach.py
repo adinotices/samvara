@@ -130,12 +130,6 @@ def test_sign_out_revokes_a_coach_session():
     assert client.get("/v1/coach/goals", headers=hdr).status_code == 401
 
 
-def test_coach_page_is_served():
-    for path in ("/", "/coach"):
-        r = client.get(path)
-        assert r.status_code == 200 and "Samvara Coach" in r.text
-
-
 # ── visibility ───────────────────────────────────────────────────────────────
 def test_coach_sees_only_shared_goals():
     hdr = coach_login()

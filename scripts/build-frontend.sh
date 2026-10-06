@@ -33,6 +33,8 @@ python3 "$ROOT/scripts/transform_bundle.py" "$SRC/index.html" "$OUT/index.html"
 cp "$SRC/api-client.js" "$OUT/api-client.js"
 cp "$SRC/favicon.svg" "$OUT/favicon.svg"
 cp -r "$SRC/fonts" "$OUT/fonts"
+# The coach's page (samvara.app/coach/); it reads ../config.js and ../fonts.
+cp -r "$SRC/coach" "$OUT/coach"
 
 # 3. Config: prefer a real config.js, fall back to the example with a warning.
 if [ -f "$SRC/config.js" ]; then

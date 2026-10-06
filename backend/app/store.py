@@ -64,7 +64,7 @@ class Store:
                    )"""
             )
             # Who a session belongs to: 'owner' (the main app, full access) or
-            # 'coach' (coach.samvara.app, coach-shared goals only). Added after
+            # 'coach' (samvara.app/coach, coach-shared goals only). Added after
             # launch, so older databases gain the column here; every session
             # that predates it was issued to the owner.
             cols = {r[1] for r in self._conn.execute("PRAGMA table_info(sessions)")}

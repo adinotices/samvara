@@ -299,6 +299,12 @@ localStorage key (`samvara.coachToken`), separate from the owner's.
   can fail it any time; that charges the stake through the same
   `beeminder.charge` (same token, caps, dryrun flag, lock, and ledger) and
   recommits at the same length, +$1. The owner can still report their own slip.
+- **Excused days.** When the coach judges a skip legitimate (travel, a
+  retreat), **Excuse a day** moves the rung's deadline 24h later. It is neither
+  a pass nor a fail: nothing is charged, no history entry is written, and the
+  rung still needs its full number of days. The rung's `excused_days` counts
+  them, and both apps show it. Allowed while the rung is still in play, before
+  its deadline or after it while it awaits the coach's verdict.
 - **No auto-charge.** A shared goal waits for the coach's verdict however long
   it takes. `/tick` and `/auto-miss` skip it, so the owner is never billed for
   the coach being slow.
@@ -314,6 +320,7 @@ localStorage key (`samvara.coachToken`), separate from the owner's.
 | POST | `/v1/coach/goals` | Create `{name, base_days, base_stake}`. |
 | POST | `/v1/coach/goals/{id}/pass` | Rung passed (deadline must have arrived). No charge. |
 | POST | `/v1/coach/goals/{id}/fail` | Charge the stake and recommit. Optional `{days, stake}`. |
+| POST | `/v1/coach/goals/{id}/excuse` | Excuse a day: deadline +24h. No charge, no verdict. |
 | POST | `/v1/coach/goals/{id}/next` | Start the next rung on a paused goal `{days, stake}`. |
 | POST | `/v1/coach/goals/{id}/archive` · `/unarchive` | Same rules as the owner's. |
 

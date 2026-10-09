@@ -202,6 +202,16 @@ def apply_choose_next(cm: Commitment, days: Any, stake: Any, at_ms: int | None =
     cm["current_rung"] = make_rung(clamp_days(days), clamp_stake(stake), at)
 
 
+def apply_excuse_day(cm: Commitment) -> None:
+    """The coach judged a day legitimately missed (travel, a retreat): push the
+    deadline back 24h. Not a pass, not a fail — no history entry, no charge,
+    and the rung's length in days is unchanged, so the excused day simply
+    doesn't count toward it. `excused_days` keeps the tally for display."""
+    r = cm["current_rung"]
+    r["due"] = iso_ms(grace_end_ms(r, 0) + DAY_MS)
+    r["excused_days"] = r.get("excused_days", 0) + 1
+
+
 def is_paused(cm: Commitment) -> bool:
     """Waiting on a deliberate human choice, with no deadline running: a clean
     rung awaiting its next one, or an auto-charged rung awaiting a recommit.

@@ -790,6 +790,22 @@ async def coach_fail(cid: str, body: CoachFailBody) -> dict[str, Any]:
     return await _slip_or_miss(cid, lapse, outcome, by="coach")
 
 
+@app.post("/v1/coach/goals/{cid}/excuse", dependencies=[Depends(require_coach)])
+async def coach_excuse(cid: str) -> dict[str, Any]:
+    """Excuse a day: the deadline moves 24h later. Neither a pass nor a fail,
+    so nothing is charged or recorded in history. Only on a rung still in
+    play — before its deadline, or past it while awaiting the verdict."""
+    async with _charge_lock:
+        with store.lock:
+            cm = _require_live_coach_goal(cid)
+            if ratchet.is_paused(cm) or cm["current_rung"]["completed"]:
+                raise HTTPException(status.HTTP_409_CONFLICT,
+                                    "This rung is already resolved; nothing to excuse.")
+            ratchet.apply_excuse_day(cm)
+            store.update_commitment(cm)
+    return cm
+
+
 @app.post("/v1/coach/goals/{cid}/next", dependencies=[Depends(require_coach)])
 async def coach_next(cid: str, body: ChooseNextBody) -> dict[str, Any]:
     """Start the next rung on a paused goal (after a pass)."""

@@ -251,13 +251,17 @@
     if (st === 'running') {
       body = `<div class="between"><span class="mono">${left(due - now)} left</span><span class="faint">ends ${esc(fmtDate(r.due))}</span></div>
         <div class="bar"><div style="width:${pct}%"></div></div>
-        <div class="row"><button class="danger" data-act="fail" data-id="${g.id}"${dis}>Mark failed (${money(r.stake)})</button></div>
-        <p class="faint" style="margin:0">You can pass it once the deadline arrives. Fail it any time they slip.</p>`;
+        <div class="row">
+          <button class="danger" data-act="fail" data-id="${g.id}"${dis}>Mark failed (${money(r.stake)})</button>
+          <button data-act="excuse" data-id="${g.id}"${dis}>Excuse a day</button>
+        </div>
+        <p class="faint" style="margin:0">You can pass it once the deadline arrives. Fail it any time they slip. Excuse a day when they had a good reason to skip it: the deadline moves 24 hours later.</p>`;
     } else if (st === 'due') {
       body = `<p class="note" style="margin:0">The ${r.days}-day rung ended ${esc(fmtDate(r.due))}. Did they stay clean? Nothing is charged until you decide.</p>
         <div class="row">
           <button class="primary" data-act="pass" data-id="${g.id}"${dis}>Passed</button>
           <button class="danger" data-act="fail" data-id="${g.id}"${dis}>Failed — charge ${money(r.stake)}</button>
+          <button data-act="excuse" data-id="${g.id}"${dis}>Excuse a day</button>
         </div>
         <p class="faint" style="margin:0">A fail restarts the same ${r.days}-day rung at ${money(failStake)}.</p>`;
     } else {
@@ -283,7 +287,7 @@
     }).join('');
     return `<div class="card">
       <div class="between"><h2>${esc(g.name)}</h2><span class="tag ${tag[1]}">${tag[0]}</span></div>
-      <div class="muted" style="font-size:13px">${plural(r.days, 'day')} rung · <span class="mono">${money(r.stake)}</span> at stake</div>
+      <div class="muted" style="font-size:13px">${plural(r.days, 'day')} rung · <span class="mono">${money(r.stake)}</span> at stake${r.excused_days ? ' · ' + plural(r.excused_days, 'day') + ' excused' : ''}</div>
       ${body}
       ${hist ? `<div class="hist">${hist}</div>` : ''}
     </div>`;
@@ -318,6 +322,9 @@
         break;
       case 'fail':
         if (confirm('Mark "' + g.name + '" failed?\n\nThis charges ' + money(g.current_rung.stake) + ' through Beeminder now.')) act(() => req('POST', path + '/fail', {}));
+        break;
+      case 'excuse':
+        if (confirm('Excuse a day on "' + g.name + '"?\n\nThe deadline moves 24 hours later. Nothing is charged, and it doesn\'t count as a pass or a fail.')) act(() => req('POST', path + '/excuse'));
         break;
       case 'openNext': state.openNext = id; render(); break;
       case 'closeNext': state.openNext = null; render(); break;

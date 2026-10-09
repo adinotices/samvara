@@ -584,7 +584,7 @@
                 <div style="min-width:0">
                   <div style="font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:var(--fg,#1d1c19);letter-spacing:-.01em;line-height:1.15">{{ card.name }}</div>
                   <div style="font-size:15px;color:var(--muted,#77746c);margin-top:5px">{{ card.rungLabel }} · <span style="font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--fg,#1d1c19)">{{ card.stakeFmt }}</span> at stake</div>
-                  <sc-if value="{{ card.coachVerifies }}"><div style="font-size:12px;color:var(--faint,#a8a49b);margin-top:3px">Verified by your coach</div></sc-if>
+                  <sc-if value="{{ card.coachVerifies }}"><div style="font-size:12px;color:var(--faint,#a8a49b);margin-top:3px">{{ card.coachNote }}</div></sc-if>
                 </div>
                 <sc-if value="{{ card.isActive }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:color-mix(in srgb,var(--accent,#3d6b52) 14%,transparent);color:var(--accent,#3d6b52)">On a rung</span></sc-if>
                 <sc-if value="{{ card.isReset }}"><span style="flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;background:var(--surface2,#eceae4);color:var(--muted,#77746c)">Fresh start</span></sc-if>
@@ -1461,6 +1461,10 @@ class Component extends DCLogic {
       // A goal shared with the coach is passed by the coach only (the server
       // refuses confirm-clean), and has no auto-charge timer to count down.
       coachVerifies: !!cm.coach,
+      // Days the coach excused push this rung's deadline back; say so, or a
+      // deadline that moved on its own would look like a bug.
+      coachNote: 'Verified by your coach' + (r.excused_days
+        ? ' · ' + r.excused_days + (r.excused_days === 1 ? ' day' : ' days') + ' excused' : ''),
       isPassedSelf: st === 'passed' && !cm.coach, isPassedCoach: st === 'passed' && !!cm.coach,
       passedBadge: cm.coach ? 'Awaiting your coach' : 'Awaiting confirmation',
       isPaused: st === 'awaiting' || st === 'recommit',

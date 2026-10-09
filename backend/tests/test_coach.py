@@ -244,3 +244,40 @@ def test_legacy_sessions_table_is_migrated_to_owner(tmp_path):
     con.commit()
     con.close()
     assert Store(path).get_session("h")["role"] == "owner"
+
+
+# ── excused days ─────────────────────────────────────────────────────────────
+def test_excuse_pushes_the_deadline_a_day_without_a_verdict():
+    hdr = coach_login()
+    cm = mk(days=3, stake=5)
+    due0 = ratchet.grace_end_ms(cm["current_rung"], 0)
+    r = client.post(f"/v1/coach/goals/{cm['id']}/excuse", headers=hdr)
+    assert r.status_code == 200
+    g = r.json()
+    assert ratchet.grace_end_ms(g["current_rung"], 0) == due0 + ratchet.DAY_MS
+    assert g["current_rung"]["excused_days"] == 1
+    assert g["current_rung"]["days"] == 3 and g["history"] == []
+    assert not g["current_rung"]["completed"] and CHARGES == []
+    client.post(f"/v1/coach/goals/{cm['id']}/excuse", headers=hdr)
+    assert store.get_commitment(cm["id"])["current_rung"]["excused_days"] == 2
+
+
+def test_excuse_reopens_a_rung_awaiting_its_verdict():
+    hdr = coach_login()
+    cm = mk()
+    make_due(cm["id"])                       # deadline was an hour ago
+    g = client.post(f"/v1/coach/goals/{cm['id']}/excuse", headers=hdr).json()
+    assert not ratchet.is_due(g)             # now ~23h in the future again
+    assert client.post(f"/v1/coach/goals/{cm['id']}/pass", headers=hdr).status_code == 409
+
+
+def test_excuse_refused_once_resolved_and_for_owner_and_unshared():
+    hdr = coach_login()
+    cm = mk()
+    make_due(cm["id"])
+    client.post(f"/v1/coach/goals/{cm['id']}/pass", headers=hdr)
+    assert client.post(f"/v1/coach/goals/{cm['id']}/excuse", headers=hdr).status_code == 409
+    other = mk()
+    assert client.post(f"/v1/coach/goals/{other['id']}/excuse", headers=OWNER).status_code == 401
+    private = mk(shared=False)
+    assert client.post(f"/v1/coach/goals/{private['id']}/excuse", headers=hdr).status_code == 404

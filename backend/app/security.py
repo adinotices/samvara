@@ -80,7 +80,8 @@ class VerifyCodeBody(BaseModel):
 # recommit_recovers. What the ratchet must never do is walk itself over the cap
 # on its own; that clamp lives in ratchet.resolve_recommit.
 class CreateBody(BaseModel):
-    name: str
+    name: str = Field(max_length=200)
+    description: str = Field(default="", max_length=2000)
     base_days: int = Field(ge=1)
     base_stake: float = Field(ge=1)
 
@@ -111,6 +112,12 @@ class BumpBody(BaseModel):
 
 class CoachShareBody(BaseModel):
     shared: bool
+
+
+class CoachEditBody(BaseModel):
+    # Either or both; an omitted field is left as it is.
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class CoachFailBody(BaseModel):

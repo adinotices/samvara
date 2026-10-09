@@ -34,6 +34,7 @@ from .config import settings
 from .security import (
     BumpBody,
     ChooseNextBody,
+    CoachEditBody,
     CoachFailBody,
     CoachShareBody,
     CreateBody,
@@ -89,10 +90,11 @@ def _note(cm: dict[str, Any], outcome: str) -> str:
     return f"Samvara: {outcome} on {cm['name']!r} ({r['days']}-day rung)"
 
 
-def _insert_new(name: str, days: int, stake: float, **extra: Any) -> dict[str, Any]:
+def _insert_new(name: str, days: int, stake: float, description: str = "",
+                **extra: Any) -> dict[str, Any]:
     # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
     for _ in range(3):
-        cm = ratchet.new_commitment(name, days, stake)
+        cm = ratchet.new_commitment(name, days, stake, description)
         cm.update(extra)
         try:
             with store.lock:
@@ -206,7 +208,9 @@ async def get_settings() -> dict[str, Any]:
 # ── writes that never charge ─────────────────────────────────────────────────
 @app.post("/v1/commitments", dependencies=[Depends(require_auth)])
 async def create_commitment(body: CreateBody) -> dict[str, Any]:
-    return _insert_new(body.name, body.base_days, body.base_stake)
+    # There is deliberately no owner route to edit a goal: its title and
+    # description are fixed once created. Only the coach can change them.
+    return _insert_new(body.name, body.base_days, body.base_stake, body.description)
 
 
 @app.post("/v1/commitments/{cid}/confirm-clean", dependencies=[Depends(require_auth)])
@@ -754,8 +758,24 @@ async def coach_goals() -> dict[str, Any]:
 @app.post("/v1/coach/goals", dependencies=[Depends(require_coach)])
 async def coach_create_goal(body: CreateBody) -> dict[str, Any]:
     _check_coach_stake(body.base_stake)
-    return _insert_new(body.name, body.base_days, body.base_stake,
+    return _insert_new(body.name, body.base_days, body.base_stake, body.description,
                        coach=True, created_by="coach")
+
+
+@app.patch("/v1/coach/goals/{cid}", dependencies=[Depends(require_coach)])
+async def coach_edit_goal(cid: str, body: CoachEditBody) -> dict[str, Any]:
+    """Change a shared goal's title and/or description, at any time —
+    archived or not, mid-rung or not. Touches nothing else."""
+    if body.name is not None and not body.name.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A goal needs a title.")
+    with store.lock:
+        cm = _require_coach_goal(cid)
+        if body.name is not None:
+            cm["name"] = ratchet.clean_title(body.name)
+        if body.description is not None:
+            cm["description"] = body.description.strip()
+        store.update_commitment(cm)
+    return cm
 
 
 @app.post("/v1/coach/goals/{cid}/pass", dependencies=[Depends(require_coach)])

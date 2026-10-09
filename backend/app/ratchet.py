@@ -98,12 +98,20 @@ def clamp_stake(v: Any, default: float = 1.0, maximum: float | None = None) -> f
     return f
 
 
-def new_commitment(name: str, base_days: Any, base_stake: Any) -> Commitment:
+def clean_title(name: Any) -> str:
+    return str(name).strip() or "Untitled commitment"
+
+
+def new_commitment(name: str, base_days: Any, base_stake: Any,
+                   description: str = "") -> Commitment:
     bd = clamp_days(base_days)
     bs = clamp_stake(base_stake)
     return {
         "id": new_id(),
-        "name": (str(name).strip() or "Untitled commitment"),
+        # `name` is the goal's title. Goals created before descriptions
+        # existed have no "description" key; readers treat that as "".
+        "name": clean_title(name),
+        "description": str(description).strip(),
         "base_days": bd,
         "base_stake": bs,
         "current_rung": make_rung(bd, bs, now_ms()),

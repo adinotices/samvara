@@ -281,3 +281,43 @@ def test_excuse_refused_once_resolved_and_for_owner_and_unshared():
     assert client.post(f"/v1/coach/goals/{other['id']}/excuse", headers=OWNER).status_code == 401
     private = mk(shared=False)
     assert client.post(f"/v1/coach/goals/{private['id']}/excuse", headers=hdr).status_code == 404
+
+
+# ── title + description ──────────────────────────────────────────────────────
+def test_goals_carry_a_description_from_creation():
+    r = client.post("/v1/commitments", headers=OWNER,
+                    json={"name": " Gym ", "description": " 4x a week, 45 min ", "base_days": 3, "base_stake": 5})
+    assert r.json()["name"] == "Gym" and r.json()["description"] == "4x a week, 45 min"
+    r = client.post("/v1/commitments", headers=OWNER, json={"name": "x", "base_days": 3, "base_stake": 5})
+    assert r.json()["description"] == ""
+    hdr = coach_login()
+    r = client.post("/v1/coach/goals", headers=hdr,
+                    json={"name": "Read", "description": "20 pages", "base_days": 3, "base_stake": 5})
+    assert r.json()["description"] == "20 pages"
+
+
+def test_coach_edits_title_and_description_any_time():
+    hdr = coach_login()
+    cm = mk()
+    r = client.patch(f"/v1/coach/goals/{cm['id']}", headers=hdr, json={"description": "No phone after 10pm"})
+    assert r.status_code == 200 and r.json()["name"] == "Goal" and r.json()["description"] == "No phone after 10pm"
+    # Archived goals too.
+    make_due(cm["id"])
+    client.post(f"/v1/coach/goals/{cm['id']}/pass", headers=hdr)
+    client.post(f"/v1/coach/goals/{cm['id']}/archive", headers=hdr)
+    r = client.patch(f"/v1/coach/goals/{cm['id']}", headers=hdr, json={"name": "Screens off"})
+    assert r.status_code == 200 and r.json()["name"] == "Screens off"
+    assert r.json()["description"] == "No phone after 10pm"
+    g = store.get_commitment(cm["id"])
+    assert g["current_rung"]["awaiting_decision"] and g["archived_at"]      # nothing else moved
+    assert client.patch(f"/v1/coach/goals/{cm['id']}", headers=hdr, json={"name": "  "}).status_code == 400
+
+
+def test_only_the_coach_can_edit_and_only_shared_goals():
+    hdr = coach_login()
+    private = mk(shared=False)
+    assert client.patch(f"/v1/coach/goals/{private['id']}", headers=hdr, json={"name": "x"}).status_code == 404
+    shared = mk()
+    assert client.patch(f"/v1/coach/goals/{shared['id']}", headers=OWNER, json={"name": "x"}).status_code == 401
+    # And the owner has no edit route of their own.
+    assert client.patch(f"/v1/commitments/{shared['id']}", headers=OWNER, json={"name": "x"}).status_code == 405

@@ -258,7 +258,7 @@ session token from the OTP flow (what the browser uses) or the static
 | POST | `/v1/auth/sign-out` | Revoke the presented session token server-side. Always 204. |
 | GET | `/v1/commitments` | List all commitments. |
 | GET | `/v1/commitments/{id}` | One commitment. |
-| POST | `/v1/commitments` | Create `{name, base_days, base_stake}`. |
+| POST | `/v1/commitments` | Create `{name, description?, base_days, base_stake}`. `name` is the title; neither can be edited afterwards by the owner. |
 | POST | `/v1/commitments/{id}/confirm-clean` | Rung finished clean; await decision. No charge. |
 | POST | `/v1/commitments/{id}/choose-next` | Start the next rung `{days, stake}`. No charge. |
 | POST | `/v1/commitments/{id}/slip` | Report a slip. `{dryRun,raise,days,stake}`. Charges unless `dryRun`; 409 on an already-resolved rung or a duplicate report. |
@@ -299,6 +299,10 @@ localStorage key (`samvara.coachToken`), separate from the owner's.
   can fail it any time; that charges the stake through the same
   `beeminder.charge` (same token, caps, dryrun flag, lock, and ledger) and
   recommits at the same length, +$1. The owner can still report their own slip.
+- **Title and description.** Every goal has a title (`name`) and an optional
+  `description`. The owner sets both at creation and can't change them; the
+  coach can edit either on any shared goal at any time, archived or not
+  (`PATCH /v1/coach/goals/{id}`). Editing touches nothing else.
 - **Excused days.** When the coach judges a skip legitimate (travel, a
   retreat), **Excuse a day** moves the rung's deadline 24h later. It is neither
   a pass nor a fail: nothing is charged, no history entry is written, and the
@@ -317,7 +321,8 @@ localStorage key (`samvara.coachToken`), separate from the owner's.
 | POST | `/v1/coach/auth/send-code` | Email a code to the coach address. Always 204. |
 | POST | `/v1/coach/auth/verify-code` | `{email, code}` → coach session token. |
 | GET | `/v1/coach/goals` | `{goals, maxCharge, dryrun}`: shared goals only. |
-| POST | `/v1/coach/goals` | Create `{name, base_days, base_stake}`. |
+| POST | `/v1/coach/goals` | Create `{name, description?, base_days, base_stake}`. |
+| PATCH | `/v1/coach/goals/{id}` | Edit `{name?, description?}`. Any shared goal, any time. |
 | POST | `/v1/coach/goals/{id}/pass` | Rung passed (deadline must have arrived). No charge. |
 | POST | `/v1/coach/goals/{id}/fail` | Charge the stake and recommit. Optional `{days, stake}`. |
 | POST | `/v1/coach/goals/{id}/excuse` | Excuse a day: deadline +24h. No charge, no verdict. |

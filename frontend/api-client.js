@@ -103,8 +103,10 @@ export async function getCommitment(id) { return req('GET', '/commitments/' + en
 export async function getSettings() { return req('GET', '/settings'); }
 
 // ── writes ───────────────────────────────────────────────────────────────────
-export async function createCommitment({ name, base_days, base_stake }) {
-  return req('POST', '/commitments', { name, base_days, base_stake });
+// `name` is the goal's title. Title and description are fixed once created
+// (only the coach can edit them, from the coach page).
+export async function createCommitment({ name, description = '', base_days, base_stake }) {
+  return req('POST', '/commitments', { name, description, base_days, base_stake });
 }
 
 export async function confirmClean(id) {

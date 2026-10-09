@@ -263,3 +263,14 @@ def test_archive_is_idempotent():
     first = client.post(f"/v1/commitments/{cid}/archive", headers=HDR).json()["archived_at"]
     again = client.post(f"/v1/commitments/{cid}/archive", headers=HDR)
     assert again.status_code == 200 and again.json()["archived_at"] == first
+
+
+def test_double_submitted_create_makes_one_goal():
+    body = {"name": "Meditate", "description": "Daily", "base_days": 1, "base_stake": 1}
+    a = client.post("/v1/commitments", headers=HDR, json=body).json()
+    b = client.post("/v1/commitments", headers=HDR, json=body).json()
+    assert a["id"] == b["id"]
+    assert sum(c["name"] == "Meditate" for c in client.get("/v1/commitments", headers=HDR).json()) == 1
+    # A different goal in the same instant is still created.
+    c = client.post("/v1/commitments", headers=HDR, json={**body, "base_stake": 2}).json()
+    assert c["id"] != a["id"]

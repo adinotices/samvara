@@ -8,6 +8,7 @@ Run from backend/:  python -m pytest -q tests/test_coach.py
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import sys
 import tempfile
@@ -72,9 +73,13 @@ def coach_login(email: str = COACH_EMAIL) -> dict[str, str]:
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
+_names = itertools.count(1)
+
+
 def mk(owner=True, days=3, stake=5.0, shared=True) -> dict:
+    # Unique names: identical creates within seconds are merged as a double-tap.
     r = client.post("/v1/commitments", headers=OWNER,
-                    json={"name": "Goal", "base_days": days, "base_stake": stake})
+                    json={"name": f"Goal {next(_names)}", "base_days": days, "base_stake": stake})
     assert r.status_code == 200
     cm = r.json()
     if shared:
@@ -300,7 +305,7 @@ def test_coach_edits_title_and_description_any_time():
     hdr = coach_login()
     cm = mk()
     r = client.patch(f"/v1/coach/goals/{cm['id']}", headers=hdr, json={"description": "No phone after 10pm"})
-    assert r.status_code == 200 and r.json()["name"] == "Goal" and r.json()["description"] == "No phone after 10pm"
+    assert r.status_code == 200 and r.json()["name"] == cm["name"] and r.json()["description"] == "No phone after 10pm"
     # Archived goals too.
     make_due(cm["id"])
     client.post(f"/v1/coach/goals/{cm['id']}/pass", headers=hdr)

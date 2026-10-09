@@ -90,8 +90,31 @@ def _note(cm: dict[str, Any], outcome: str) -> str:
     return f"Samvara: {outcome} on {cm['name']!r} ({r['days']}-day rung)"
 
 
+# A create identical to one made this recently is treated as the same tap
+# arriving twice (a double-tap on a slow phone connection sends two POSTs).
+DUPLICATE_CREATE_WINDOW_MS = 10_000
+
+
+def _recent_twin(name: str, days: int, stake: float, description: str) -> dict[str, Any] | None:
+    now = ratchet.now_ms()
+    for cm in store.list_commitments():
+        r = cm["current_rung"]
+        if (cm["name"] == ratchet.clean_title(name)
+                and cm.get("description", "") == str(description).strip()
+                and cm["base_days"] == ratchet.clamp_days(days)
+                and cm["base_stake"] == ratchet.clamp_stake(stake)
+                and not cm["history"] and not cm.get("archived_at")
+                and 0 <= now - ratchet.grace_end_ms({"due": r["start"]}, 0) < DUPLICATE_CREATE_WINDOW_MS):
+            return cm
+    return None
+
+
 def _insert_new(name: str, days: int, stake: float, description: str = "",
                 **extra: Any) -> dict[str, Any]:
+    with store.lock:
+        twin = _recent_twin(name, days, stake, description)
+    if twin is not None:
+        return twin
     # The 7-hex-char id can collide (~1 in 268M); regenerate rather than 500.
     for _ in range(3):
         cm = ratchet.new_commitment(name, days, stake, description)

@@ -1285,6 +1285,11 @@ class Component extends DCLogic {
   // writes those messages to be read, so surface them verbatim.
   act(fn) {
     return async (...args) => {
+      // One server action at a time: a second tap while the first request is
+      // still in flight is dropped. Without this a double-tapped "Create
+      // commitment" created the goal twice.
+      if (this._acting) return;
+      this._acting = true;
       this.setState({ actionError: '' });
       try {
         await fn(...args);
@@ -1300,6 +1305,8 @@ class Component extends DCLogic {
         const arrow = raw.indexOf('→ ');
         const sep = arrow === -1 ? -1 : raw.indexOf(': ', arrow);
         this.setState({ actionError: sep === -1 ? raw : raw.slice(sep + 2) });
+      } finally {
+        this._acting = false;
       }
     };
   }

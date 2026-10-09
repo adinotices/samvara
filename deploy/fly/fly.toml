@@ -13,7 +13,9 @@ primary_region = "iad"
 
 [build]
   # Relative to THIS file. Deploy with the backend dir as the build context:
-  #   flyctl deploy ./backend -c deploy/fly/fly.toml
+  #   flyctl deploy ./backend -c "$PWD/deploy/fly/fly.toml"
+  # The config path must be absolute: flyctl resolves a relative -c against
+  # ./backend, not the shell's directory.
   dockerfile = "../../backend/Dockerfile"
 
 [env]

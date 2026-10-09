@@ -1,0 +1,72 @@
+name: Admin — list or delete a goal
+
+# Manual-only maintenance against the live database, through the same
+# deploy-scoped FLY_API_TOKEN the deploy workflow uses.
+#
+#   list    prints every goal's opaque id and flags (coach-shared, history
+#           length, archived, rung start). Never titles or descriptions:
+#           this repo's Actions logs are public.
+#   delete  removes ONE goal by id, and only if it is untouched: not shared
+#           with the coach, no history (nothing charged or verified), not
+#           archived. Anything else is refused. Meant for accidental
+#           duplicates, not for escaping a commitment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "list or delete"
+        required: true
+        default: list
+        type: choice
+        options: [list, delete]
+      goal_id:
+        description: "Goal id to delete (e.g. c_1a2b3c4); ignored for list"
+        required: false
+        default: ""
+
+concurrency:
+  group: admin-goals
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run against the live database
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          ACTION: ${{ inputs.action }}
+          GOAL_ID: ${{ inputs.goal_id }}
+        run: |
+          set -euo pipefail
+          [[ "$GOAL_ID" =~ ^(c_[0-9a-f]{7})?$ ]] || { echo "goal_id must look like c_1a2b3c4"; exit 1; }
+          # The script runs inside the app's machine, where the database lives.
+          # Inputs are baked into the script text (validated above), and the
+          # whole thing travels base64-encoded so no shell quoting can mangle it.
+          script=$(cat <<PY
+          import json, sqlite3, sys
+          ACTION, GOAL_ID = "$ACTION", "$GOAL_ID"
+          con = sqlite3.connect("/data/samvara.db")
+          rows = [(cid, json.loads(d)) for cid, d in con.execute("SELECT id, data FROM commitments ORDER BY seq")]
+          if ACTION == "list":
+              for cid, cm in rows:
+                  r = cm["current_rung"]
+                  print(cid, "coach" if cm.get("coach") else "own", "history=%d" % len(cm["history"]),
+                        "archived" if cm.get("archived_at") else "live", "start=" + r["start"])
+              sys.exit(0)
+          cm = dict(rows).get(GOAL_ID)
+          if cm is None:
+              sys.exit("no goal " + GOAL_ID)
+          if cm.get("coach") or cm["history"] or cm.get("archived_at"):
+              sys.exit("refused: only an unshared goal with no history can be deleted")
+          with con:
+              con.execute("DELETE FROM commitments WHERE id=?", (GOAL_ID,))
+          print("deleted", GOAL_ID)
+          PY
+          )
+          b64=$(printf '%s' "$script" | sed 's/^          //' | base64 -w0)
+          flyctl ssh console -a samvara-api -C "sh -c 'echo $b64 | base64 -d | python3 -'"
